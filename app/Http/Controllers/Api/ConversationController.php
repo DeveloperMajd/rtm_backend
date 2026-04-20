@@ -8,7 +8,29 @@ use Illuminate\Http\Request;
 
 class ConversationController extends Controller
 {
-    //* Store a new conversation
+
+    public function index(Request $request)
+    {
+        $conversations = Conversation::whereHas('participants', function ($query) use ($request) {
+            $query->where('user_id', 1); // For testing purposes, replace with actual user ID in production
+        })->get();
+
+        return response()->json($conversations);
+    }
+
+    public function show(Request $request, Conversation $conversation)
+    {
+        // Check if the user is a participant in the conversation
+        $isParticipant = $conversation->participants()->where('user_id', 1)->exists(); // For testing purposes, replace with actual user ID in production
+
+        if (!$isParticipant) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        return response()->json($conversation);
+    }
+
+
     public function store(Request $request)
     {
         $conversation = Conversation::create([
