@@ -16,7 +16,7 @@ class MessageController extends Controller
     {
         $per_page = $request->query('per_page', 20);
 
-        $messages = $conversation->messages()->orderBy('created_at', 'asc')->paginate($per_page);
+        $messages = $conversation->messages()->with('sender:id,name')->orderBy('created_at', 'asc')->paginate($per_page);
         return response()->json($messages);
     }
 
