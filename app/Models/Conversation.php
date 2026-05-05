@@ -2,12 +2,14 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Conversation extends Model
 {
+    use HasFactory;
 
     protected $fillable = [
         'type',
@@ -15,7 +17,7 @@ class Conversation extends Model
         'title',
     ];
 
-    //Relationships
+    // Relationships
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by_user_id');
