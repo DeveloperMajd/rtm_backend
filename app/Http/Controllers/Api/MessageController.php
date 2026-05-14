@@ -3,32 +3,41 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Message;
 use App\Http\Requests\StoreMessageRequest;
+use App\Http\Resources\MessageResource;
 use App\Models\Conversation;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class MessageController extends Controller
 {
-
-    //* Read messages for a conversation ordered by created_at
-    public function index(Request $request, Conversation $conversation)
+    public function index(Request $request, Conversation $conversation): AnonymousResourceCollection
     {
-        $per_page = $request->query('per_page', 20);
+        $perPage = $request->query('per_page', 20);
 
-        $messages = $conversation->messages()->with('sender:id,name')->orderBy('created_at', 'asc')->paginate($per_page);
-        return response()->json($messages);
+        $messages = $conversation->messages()
+            ->with('sender:id,name')
+            ->orderBy('created_at', 'asc')
+            ->paginate($perPage);
+
+        return MessageResource::collection($messages);
     }
 
-    //* Store a new message in a conversation
-    public function store(StoreMessageRequest $request)
+    public function store(StoreMessageRequest $request): JsonResponse
     {
-        $message = Message::create([
-            'conversation_id' => $request->input('conversation_id'),
-            'sender_user_id' => $request->input('sender_user_id'),
-            'body' => $request->body,
+        $conversation = Conversation::find($request->input('conversation_id'));
+
+        $message = $conversation->messages()->create([
+            'sender_user_id' => $request->input('sender_user_id', 1), // replace with auth()->id()
+            'body' => $request->input('body'),
         ]);
 
-        return response()->json($message, 201);
+        $conversation->last_message_at = now();
+        $conversation->save();
+
+        return (new MessageResource($message->load('sender')))
+            ->response()
+            ->setStatusCode(201);
     }
 }

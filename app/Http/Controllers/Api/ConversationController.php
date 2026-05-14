@@ -3,50 +3,51 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreConversationRequest;
+use App\Http\Resources\ConversationResource;
 use App\Models\Conversation;
-use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class ConversationController extends Controller
 {
-
-    public function index(Request $request)
+    public function index(): AnonymousResourceCollection
     {
-        $conversations = Conversation::whereHas('participants', function ($query) use ($request) {
-            $query->where('user_id', 1); // For testing purposes, replace with actual user ID in production
+        $conversations = Conversation::whereHas('participants', function ($query): void {
+            $query->where('user_id', 1); // replace with auth()->id() once auth is implemented
         })->get();
 
-        return response()->json($conversations);
+        return ConversationResource::collection($conversations);
     }
 
-    public function show(Request $request, Conversation $conversation)
+    public function show(Conversation $conversation): ConversationResource|JsonResponse
     {
-        // Check if the user is a participant in the conversation
-        $isParticipant = $conversation->participants()->where('user_id', 1)->exists(); // For testing purposes, replace with actual user ID in production
+        $isParticipant = $conversation->participants()->where('user_id', 1)->exists(); // replace with auth()->id()
 
-        if (!$isParticipant) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+        if (! $isParticipant) {
+            return response()->json(['message' => 'Forbidden'], 403);
         }
 
-        return response()->json($conversation);
+        return new ConversationResource($conversation);
     }
 
-
-    public function store(Request $request)
+    public function store(StoreConversationRequest $request): JsonResponse
     {
         $conversation = Conversation::create([
-            // 'created_by_user_id' => $request->user()->id,
-            'created_by_user_id' => 1, // For testing purposes, replace with actual user ID in production
-            'type' => 'direct',
+            'created_by_user_id' => 1, // replace with auth()->id()
+            'type' => $request->input('type', 'direct'),
+            'title' => $request->input('title'),
         ]);
 
         $conversation->participants()->create([
-            // 'user_id' => $request->user()->id,
-            'user_id' => 1, // For testing purposes, replace with actual user ID in production
+            'user_id' => 1, // replace with auth()->id()
             'role' => 'admin',
             'joined_at' => now(),
             'conversation_id' => $conversation->id,
         ]);
 
-        return response()->json($conversation, 201);
+        return (new ConversationResource($conversation))
+            ->response()
+            ->setStatusCode(201);
     }
 }

@@ -26,4 +26,14 @@ class StoreMessageRequest extends FormRequest
             'body' => ['required', 'string'],
         ];
     }
+
+    public function messages(): array
+    {
+        return [
+            'conversation_id.required' => 'The conversation ID is required.',
+            'conversation_id.exists' => 'The specified conversation does not exist.',
+            'body.required' => 'The message body is required.',
+            'body.string' => 'The message body must be a string.',
+        ];
+    }
 }
