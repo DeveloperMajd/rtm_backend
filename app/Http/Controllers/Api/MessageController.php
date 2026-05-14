@@ -14,12 +14,14 @@ class MessageController extends Controller
 {
     public function index(Request $request, Conversation $conversation): AnonymousResourceCollection
     {
-        $perPage = $request->query('per_page', 20);
+        $perPage = $request->query('per_page', 10);
 
         $messages = $conversation->messages()
             ->with('sender:id,name')
-            ->orderBy('created_at', 'asc')
+            ->latest()
             ->paginate($perPage);
+
+        $messages->setCollection($messages->getCollection()->reverse()->values());
 
         return MessageResource::collection($messages);
     }
