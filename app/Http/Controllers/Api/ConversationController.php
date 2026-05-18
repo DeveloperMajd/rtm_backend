@@ -15,7 +15,7 @@ class ConversationController extends Controller
     {
         $conversations = Conversation::whereHas('participants', function ($query): void {
             $query->where('user_id', 1); // replace with auth()->id() once auth is implemented
-        })->get();
+        })->with('latestMessage.sender')->get();
 
         return ConversationResource::collection($conversations);
     }
@@ -25,8 +25,10 @@ class ConversationController extends Controller
         $isParticipant = $conversation->participants()->where('user_id', 1)->exists(); // replace with auth()->id()
 
         if (! $isParticipant) {
-            return response()->json(['message' => 'Forbidden'], 403);
+            return response()->json(['data' => ['message' => 'Forbidden']], 403);
         }
+
+        $conversation->load('participants.user');
 
         return new ConversationResource($conversation);
     }
@@ -39,12 +41,22 @@ class ConversationController extends Controller
             'title' => $request->input('title'),
         ]);
 
+
         $conversation->participants()->create([
             'user_id' => 1, // replace with auth()->id()
             'role' => 'admin',
             'joined_at' => now(),
             'conversation_id' => $conversation->id,
         ]);
+
+        foreach ($request->input('participant_ids', []) as $userId) {
+            $conversation->participants()->create([
+                'user_id' => $userId,
+                'role' => 'participant',
+                'joined_at' => now(),
+                'conversation_id' => $conversation->id,
+            ]);
+        }
 
         return (new ConversationResource($conversation))
             ->response()

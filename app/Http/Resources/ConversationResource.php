@@ -20,6 +20,20 @@ class ConversationResource extends JsonResource
             'title' => $this->title,
             'created_by_user_id' => $this->created_by_user_id,
             'last_message_at' => $this->last_message_at,
+            'latest_message' => $this->whenLoaded('latestMessage', function () {
+                return $this->latestMessage ? [
+                    'body' => $this->latestMessage->body,
+                    'sender_name' => $this->latestMessage->sender?->name,
+                ] : null;
+            }),
+            'participants' => $this->whenLoaded('participants', function () {
+                return $this->participants->map(fn ($p) => [
+                    'user_id' => $p->user_id,
+                    'name'    => $p->user?->name,
+                    'role'    => $p->role,
+                ]);
+            }),
+            'participants_count' => $this->whenLoaded('participants', fn () => $this->participants->count()),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

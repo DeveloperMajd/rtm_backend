@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreConversationRequest extends FormRequest
 {
@@ -21,8 +22,17 @@ class StoreConversationRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'type' => ['sometimes', 'string', 'in:direct,group'],
-            'title' => ['nullable', 'string', 'max:255'],
+            'type'             => ['sometimes', 'string', 'in:direct,group'],
+            'title'            => ['nullable', 'string', 'max:255'],
+            'participant_ids'  => [
+                'nullable',
+                'array',
+                Rule::when(
+                    fn ($input) => ($input->type ?? 'direct') === 'direct',
+                    ['max:1'],
+                ),
+            ],
+            'participant_ids.*' => ['integer', 'exists:users,id'],
         ];
     }
 }
