@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Conversation;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreMessageRequest extends FormRequest
@@ -11,7 +12,15 @@ class StoreMessageRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return true;
+        $conversation = Conversation::find($this->input('conversation_id'));
+
+        if (! $conversation) {
+            return false;
+        }
+
+        return $conversation->participants()
+            ->where('user_id', $this->user()->id)
+            ->exists();
     }
 
     /**

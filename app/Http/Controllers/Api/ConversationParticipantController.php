@@ -7,15 +7,15 @@ use App\Http\Resources\ConversationParticipantResource;
 use App\Models\Conversation;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class ConversationParticipantController extends Controller
 {
-
-    public function index(Conversation $conversation): AnonymousResourceCollection|JsonResponse
+    public function index(Request $request, Conversation $conversation): AnonymousResourceCollection|JsonResponse
     {
         $isParticipant = $conversation->participants()
-            ->where('user_id', 1) // replace with auth()->id()
+            ->where('user_id', $request->user()->id)
             ->exists();
 
         if (! $isParticipant) {
@@ -27,12 +27,10 @@ class ConversationParticipantController extends Controller
         return ConversationParticipantResource::collection($participants);
     }
 
-    public function destroy(Conversation $conversation, User $user): JsonResponse
+    public function destroy(Request $request, Conversation $conversation, User $user): JsonResponse
     {
-        $requestingUserId = 1; // replace with auth()->id()
-
         $isParticipant = $conversation->participants()
-            ->where('user_id', $requestingUserId)
+            ->where('user_id', $request->user()->id)
             ->exists();
 
         if (! $isParticipant) {

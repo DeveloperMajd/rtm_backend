@@ -1,21 +1,37 @@
 <?php
 
+use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\ConversationParticipantController;
 use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
-//remove auth middleware for testing purposes, add it back in production
+Route::prefix('auth')->controller(AuthController::class)->group(function () {
+    Route::post('/register', 'register');
+    Route::post('/login', 'login')->middleware('throttle:5,1');
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/logout', 'logout');
+        Route::get('/me', 'me');
+    });
+});
 
-Route::post('/conversations', [ConversationController::class, 'store']);
-Route::get('/conversations', [ConversationController::class, 'index']);
-Route::get('/conversations/{conversation}', [ConversationController::class, 'show']);
+Route::middleware('auth:sanctum')->group(function () {
+    Route::prefix('conversations')->controller(ConversationController::class)->group(function () {
+        Route::get('/', 'index');
+        Route::post('/', 'store');
+        Route::get('/{conversation}', 'show');
+    });
 
-Route::post('/messages', [MessageController::class, 'store']);
-Route::get('/conversations/{conversation}/messages', [MessageController::class, 'index']);
+    Route::controller(MessageController::class)->group(function () {
+        Route::post('/messages', 'store');
+        Route::get('/conversations/{conversation}/messages', 'index');
+    });
 
-Route::get('/users', [UserController::class, 'index']);
+    Route::get('/users', [UserController::class, 'index']);
 
-Route::get('/conversations/{conversation}/participants', [ConversationParticipantController::class, 'index']);
-Route::delete('/conversations/{conversation}/participants/{user}', [ConversationParticipantController::class, 'destroy']);
+    Route::prefix('conversations/{conversation}/participants')->controller(ConversationParticipantController::class)->group(function () {
+        Route::get('/', 'index');
+        Route::delete('/{user}', 'destroy');
+    });
+});

@@ -7,22 +7,24 @@ use App\Http\Requests\StoreConversationRequest;
 use App\Http\Resources\ConversationResource;
 use App\Models\Conversation;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 
 class ConversationController extends Controller
 {
-    public function index(): AnonymousResourceCollection
+    public function index(Request $request): AnonymousResourceCollection
     {
-        $conversations = Conversation::whereHas('participants', function ($query): void {
-            $query->where('user_id', 1); // replace with auth()->id() once auth is implemented
+        $conversations = Conversation::whereHas('participants', function ($query) use ($request): void {
+            $query->where('user_id', $request->user()->id);
         })->with('latestMessage.sender')->get();
 
         return ConversationResource::collection($conversations);
     }
 
-    public function show(Conversation $conversation): ConversationResource|JsonResponse
+    public function show(Request $request, Conversation $conversation): ConversationResource|JsonResponse
     {
-        $isParticipant = $conversation->participants()->where('user_id', 1)->exists(); // replace with auth()->id()
+        $isParticipant = $conversation->participants()->where('user_id', $request->user()->id)->exists();
 
         if (! $isParticipant) {
             return response()->json(['data' => ['message' => 'Forbidden']], 403);
@@ -35,28 +37,31 @@ class ConversationController extends Controller
 
     public function store(StoreConversationRequest $request): JsonResponse
     {
-        $conversation = Conversation::create([
-            'created_by_user_id' => 1, // replace with auth()->id()
-            'type' => $request->input('type', 'direct'),
-            'title' => $request->input('title'),
-        ]);
+        $conversation = DB::transaction(function () use ($request): Conversation {
+            $conversation = Conversation::create([
+                'created_by_user_id' => $request->user()->id,
+                'type' => $request->input('type', 'direct'),
+                'title' => $request->input('title'),
+            ]);
 
-
-        $conversation->participants()->create([
-            'user_id' => 1, // replace with auth()->id()
-            'role' => 'admin',
-            'joined_at' => now(),
-            'conversation_id' => $conversation->id,
-        ]);
-
-        foreach ($request->input('participant_ids', []) as $userId) {
             $conversation->participants()->create([
-                'user_id' => $userId,
-                'role' => 'participant',
+                'user_id' => $request->user()->id,
+                'role' => 'admin',
                 'joined_at' => now(),
                 'conversation_id' => $conversation->id,
             ]);
-        }
+
+            foreach (array_diff($request->input('participant_ids', []), [$request->user()->id]) as $userId) {
+                $conversation->participants()->create([
+                    'user_id' => $userId,
+                    'role' => 'participant',
+                    'joined_at' => now(),
+                    'conversation_id' => $conversation->id,
+                ]);
+            }
+
+            return $conversation;
+        });
 
         return (new ConversationResource($conversation))
             ->response()

@@ -2,14 +2,21 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 class Conversation extends Model
 {
-    use HasFactory;
+    use HasFactory, HasUuids;
+
+    public function newUniqueId(): string
+    {
+        return (string) Str::uuid7();
+    }
 
     protected $fillable = [
         'type',

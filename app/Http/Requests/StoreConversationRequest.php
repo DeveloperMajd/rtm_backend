@@ -22,9 +22,9 @@ class StoreConversationRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'type'             => ['sometimes', 'string', 'in:direct,group'],
-            'title'            => ['nullable', 'string', 'max:255'],
-            'participant_ids'  => [
+            'type' => ['sometimes', 'string', 'in:direct,group'],
+            'title' => ['nullable', 'string', 'max:255'],
+            'participant_ids' => [
                 'nullable',
                 'array',
                 Rule::when(
@@ -32,7 +32,7 @@ class StoreConversationRequest extends FormRequest
                     ['max:1'],
                 ),
             ],
-            'participant_ids.*' => ['integer', 'exists:users,id'],
+            'participant_ids.*' => ['uuid', 'exists:users,id'],
         ];
     }
 }

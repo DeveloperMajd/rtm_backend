@@ -46,8 +46,8 @@ class DatabaseSeeder extends Seeder
         $this->seedMessages($conv3->id, [$alice->id, $bob->id, $charlie->id], 6);
     }
 
-    /** @param array<int> $userIds */
-    private function addParticipants(int $conversationId, array $userIds, ?int $adminId = null): void
+    /** @param array<string> $userIds */
+    private function addParticipants(string $conversationId, array $userIds, ?string $adminId = null): void
     {
         foreach ($userIds as $userId) {
             ConversationParticipant::create([
@@ -58,8 +58,8 @@ class DatabaseSeeder extends Seeder
         }
     }
 
-    /** @param array<int> $senderIds */
-    private function seedMessages(int $conversationId, array $senderIds, int $count): void
+    /** @param array<string> $senderIds */
+    private function seedMessages(string $conversationId, array $senderIds, int $count): void
     {
         for ($i = 0; $i < $count; $i++) {
             Message::factory()->create([

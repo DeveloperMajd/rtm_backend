@@ -12,13 +12,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('conversations', function (Blueprint $table) {
-            $table->id();
-            $table->string('type')->default('direct'); // 'direct' or 'group'
-            $table->string('title')->nullable(); // For group conversations
-            $table->foreignId('created_by_user_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->uuid('id')->primary();
+            $table->string('type')->default('direct');
+            $table->string('title')->nullable();
+            $table->foreignUuid('created_by_user_id')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('last_message_at')->nullable();
             $table->timestamps();
-
 
             $table->index('last_message_at');
         });

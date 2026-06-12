@@ -31,7 +31,7 @@ class MessageController extends Controller
         $conversation = Conversation::find($request->input('conversation_id'));
 
         $message = $conversation->messages()->create([
-            'sender_user_id' => $request->input('sender_user_id', 1), // replace with auth()->id()
+            'sender_user_id' => $request->user()->id,
             'body' => $request->input('body'),
         ]);
 
