@@ -14,7 +14,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->statefulApi();
+        $middleware->preventRequestForgery(
+            except: ['api/auth/register', 'api/auth/login'],
+            allowSameSite: true,
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
