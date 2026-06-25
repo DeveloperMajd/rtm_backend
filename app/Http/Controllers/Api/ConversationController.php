@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\TypingIndicator;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreConversationRequest;
 use App\Http\Resources\ConversationResource;
@@ -9,6 +10,7 @@ use App\Models\Conversation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 
 class ConversationController extends Controller
@@ -66,5 +68,18 @@ class ConversationController extends Controller
         return (new ConversationResource($conversation))
             ->response()
             ->setStatusCode(201);
+    }
+
+    public function typing(Request $request, Conversation $conversation): Response
+    {
+        $isParticipant = $conversation->participants()->where('user_id', $request->user()->id)->exists();
+
+        if (! $isParticipant) {
+            return response()->noContent(403);
+        }
+
+        broadcast(new TypingIndicator($conversation->id, $request->user()));
+
+        return response()->noContent();
     }
 }

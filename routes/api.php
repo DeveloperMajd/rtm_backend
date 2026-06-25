@@ -21,6 +21,7 @@ Route::middleware(['web', 'auth:sanctum'])->group(function () {
         Route::get('/', 'index');
         Route::post('/', 'store');
         Route::get('/{conversation}', 'show');
+        Route::post('/{conversation}/typing', 'typing');
     });
 
     Route::controller(MessageController::class)->group(function () {

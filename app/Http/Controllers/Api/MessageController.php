@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\MessageSent;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreMessageRequest;
 use App\Http\Resources\MessageResource;
@@ -38,7 +39,11 @@ class MessageController extends Controller
         $conversation->last_message_at = now();
         $conversation->save();
 
-        return (new MessageResource($message->load('sender')))
+        $message->load('sender');
+
+        broadcast(new MessageSent($message));
+
+        return (new MessageResource($message))
             ->response()
             ->setStatusCode(201);
     }
