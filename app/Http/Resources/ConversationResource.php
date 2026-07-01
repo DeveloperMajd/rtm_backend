@@ -20,6 +20,14 @@ class ConversationResource extends JsonResource
             'title' => $this->title,
             'created_by_user_id' => $this->created_by_user_id,
             'last_message_at' => $this->last_message_at,
+            'other_participant' => $this->when(
+                $this->type === 'direct' && $this->relationLoaded('participants'),
+                function () use ($request) {
+                    $other = $this->participants->first(fn ($p) => $p->user_id !== $request->user()->id);
+
+                    return $other ? ['id' => $other->user_id, 'name' => $other->user?->name] : null;
+                },
+            ),
             'latest_message' => $this->whenLoaded('latestMessage', function () {
                 return $this->latestMessage ? [
                     'body' => $this->latestMessage->body,
@@ -29,8 +37,8 @@ class ConversationResource extends JsonResource
             'participants' => $this->whenLoaded('participants', function () {
                 return $this->participants->map(fn ($p) => [
                     'user_id' => $p->user_id,
-                    'name'    => $p->user?->name,
-                    'role'    => $p->role,
+                    'name' => $p->user?->name,
+                    'role' => $p->role,
                 ]);
             }),
             'participants_count' => $this->whenLoaded('participants', fn () => $this->participants->count()),

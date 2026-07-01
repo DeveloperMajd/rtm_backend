@@ -19,7 +19,7 @@ class ConversationController extends Controller
     {
         $conversations = Conversation::whereHas('participants', function ($query) use ($request): void {
             $query->where('user_id', $request->user()->id);
-        })->with('latestMessage.sender')->get();
+        })->with(['latestMessage.sender', 'participants.user'])->get();
 
         return ConversationResource::collection($conversations);
     }
@@ -39,6 +39,23 @@ class ConversationController extends Controller
 
     public function store(StoreConversationRequest $request): JsonResponse
     {
+        $type = $request->input('type', 'direct');
+
+        if ($type === 'direct') {
+            $otherUserId = $request->input('participant_ids')[0];
+
+            $existing = Conversation::where('type', 'direct')
+                ->whereHas('participants', fn ($query) => $query->where('user_id', $request->user()->id))
+                ->whereHas('participants', fn ($query) => $query->where('user_id', $otherUserId))
+                ->first();
+
+            if ($existing) {
+                $existing->load('participants.user');
+
+                return (new ConversationResource($existing))->response();
+            }
+        }
+
         $conversation = DB::transaction(function () use ($request): Conversation {
             $conversation = Conversation::create([
                 'created_by_user_id' => $request->user()->id,
@@ -64,6 +81,8 @@ class ConversationController extends Controller
 
             return $conversation;
         });
+
+        $conversation->load('participants.user');
 
         return (new ConversationResource($conversation))
             ->response()

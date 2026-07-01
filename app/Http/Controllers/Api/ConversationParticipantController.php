@@ -29,11 +29,7 @@ class ConversationParticipantController extends Controller
 
     public function destroy(Request $request, Conversation $conversation, User $user): JsonResponse
     {
-        $isParticipant = $conversation->participants()
-            ->where('user_id', $request->user()->id)
-            ->exists();
-
-        if (! $isParticipant) {
+        if ($user->id !== $request->user()->id) {
             return response()->json(['data' => ['message' => 'Forbidden']], 403);
         }
 

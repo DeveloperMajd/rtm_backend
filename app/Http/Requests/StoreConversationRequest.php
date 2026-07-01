@@ -25,11 +25,11 @@ class StoreConversationRequest extends FormRequest
             'type' => ['sometimes', 'string', 'in:direct,group'],
             'title' => ['nullable', 'string', 'max:255'],
             'participant_ids' => [
-                'nullable',
                 'array',
                 Rule::when(
                     fn ($input) => ($input->type ?? 'direct') === 'direct',
-                    ['max:1'],
+                    ['required', 'size:1'],
+                    ['nullable'],
                 ),
             ],
             'participant_ids.*' => ['uuid', 'exists:users,id'],

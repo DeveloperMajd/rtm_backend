@@ -24,6 +24,16 @@ class Conversation extends Model
         'title',
     ];
 
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'last_message_at' => 'datetime',
+        ];
+    }
+
     // Relationships
     public function creator(): BelongsTo
     {
