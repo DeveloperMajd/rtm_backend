@@ -18,8 +18,15 @@ class MessageSent implements ShouldBroadcast
 
     public function broadcastOn(): array
     {
+        $participantChannels = $this->message->conversation
+            ->participants()
+            ->pluck('user_id')
+            ->map(fn ($userId) => new PrivateChannel('App.Models.User.'.$userId))
+            ->all();
+
         return [
             new PrivateChannel('conversation.'.$this->message->conversation_id),
+            ...$participantChannels,
         ];
     }
 

@@ -42,6 +42,24 @@ class ConversationResource extends JsonResource
                 ]);
             }),
             'participants_count' => $this->whenLoaded('participants', fn () => $this->participants->count()),
+            'unread_count' => $this->when(
+                $this->relationLoaded('participants'),
+                function () use ($request) {
+                    $participant = $this->participants->firstWhere('user_id', $request->user()->id);
+
+                    if (! $participant) {
+                        return 0;
+                    }
+
+                    return $this->messages()
+                        ->where('sender_user_id', '!=', $request->user()->id)
+                        ->when(
+                            $participant->last_read_message_id,
+                            fn ($query) => $query->where('id', '>', $participant->last_read_message_id),
+                        )
+                        ->count();
+                },
+            ),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

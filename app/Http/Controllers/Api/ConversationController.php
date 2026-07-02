@@ -101,4 +101,22 @@ class ConversationController extends Controller
 
         return response()->noContent();
     }
+
+    public function markAsRead(Request $request, Conversation $conversation): Response
+    {
+        $participant = $conversation->participants()->where('user_id', $request->user()->id)->first();
+
+        if (! $participant) {
+            return response()->noContent(403);
+        }
+
+        $latestMessageId = $conversation->messages()->orderByDesc('id')->value('id');
+
+        $participant->update([
+            'last_read_message_id' => $latestMessageId,
+            'last_read_at' => now(),
+        ]);
+
+        return response()->noContent();
+    }
 }
