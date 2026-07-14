@@ -27,6 +27,7 @@ Route::middleware(['web', 'auth:sanctum'])->group(function () {
 
     Route::controller(MessageController::class)->group(function () {
         Route::post('/messages', 'store')->middleware('throttle:30,1');
+        Route::get('/messages/search', 'search')->middleware('throttle:30,1');
         Route::get('/conversations/{conversation}/messages', 'index');
     });
 

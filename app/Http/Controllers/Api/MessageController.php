@@ -4,9 +4,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Events\MessageSent;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\SearchMessagesRequest;
 use App\Http\Requests\StoreMessageRequest;
 use App\Http\Resources\MessageResource;
+use App\Http\Resources\MessageSearchResource;
 use App\Models\Conversation;
+use App\Models\Message;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -46,5 +49,28 @@ class MessageController extends Controller
         return (new MessageResource($message))
             ->response()
             ->setStatusCode(201);
+    }
+
+    public function search(SearchMessagesRequest $request): AnonymousResourceCollection
+    {
+        $query = trim((string) $request->input('q'));
+
+        // search_vector combines a literal representation (weight A) and a
+        // stemmed one (weight B) of the message body. Matching against both
+        // in one query means a plain word search still finds inflected forms
+        // ("run" finds "running"), while ts_rank's weighting means a literal
+        // match always outranks one that only exists because of English
+        // over-stemming (e.g. "universe"/"university" both stem to 'univers').
+        $tsQuery = "(websearch_to_tsquery('simple', ?) || websearch_to_tsquery('english', ?))";
+
+        $messages = Message::query()
+            ->whereHas('conversation.participants', fn ($q) => $q->where('user_id', $request->user()->id))
+            ->whereRaw("search_vector @@ {$tsQuery}", [$query, $query])
+            ->with(['sender:id,name', 'conversation.participants.user'])
+            ->orderByRaw("ts_rank(search_vector, {$tsQuery}) DESC", [$query, $query])
+            ->limit(20)
+            ->get();
+
+        return MessageSearchResource::collection($messages);
     }
 }
