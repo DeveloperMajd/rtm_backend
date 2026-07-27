@@ -22,6 +22,7 @@ class MessageResource extends JsonResource
                 'id' => $this->sender->id,
                 'name' => $this->sender->name,
             ]),
+            'reactions' => MessageReactionResource::collection($this->whenLoaded('reactions')),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

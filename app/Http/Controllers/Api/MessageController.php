@@ -21,7 +21,7 @@ class MessageController extends Controller
         $perPage = $request->query('per_page', 10);
 
         $messages = $conversation->messages()
-            ->with('sender:id,name')
+            ->with(['sender:id,name', 'reactions.user:id,name'])
             ->latest()
             ->paginate($perPage);
 
@@ -42,7 +42,7 @@ class MessageController extends Controller
         $conversation->last_message_at = now();
         $conversation->save();
 
-        $message->load('sender');
+        $message->load(['sender', 'reactions.user:id,name']);
 
         broadcast(new MessageSent($message));
 

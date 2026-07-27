@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\ConversationParticipantController;
 use App\Http\Controllers\Api\MessageController;
+use App\Http\Controllers\Api\MessageReactionController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -29,6 +30,11 @@ Route::middleware(['web', 'auth:sanctum'])->group(function () {
         Route::post('/messages', 'store')->middleware('throttle:30,1');
         Route::get('/messages/search', 'search')->middleware('throttle:30,1');
         Route::get('/conversations/{conversation}/messages', 'index');
+    });
+
+    Route::prefix('messages/{message}/reactions')->controller(MessageReactionController::class)->group(function () {
+        Route::post('/', 'store')->middleware('throttle:60,1');
+        Route::delete('/{reaction}', 'destroy')->middleware('throttle:60,1');
     });
 
     Route::get('/users', [UserController::class, 'index']);
