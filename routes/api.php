@@ -41,6 +41,8 @@ Route::middleware(['web', 'auth:sanctum'])->group(function () {
 
     Route::prefix('conversations/{conversation}/participants')->controller(ConversationParticipantController::class)->group(function () {
         Route::get('/', 'index');
+        Route::post('/', 'store')->middleware('throttle:20,1');
         Route::delete('/{user}', 'destroy');
+        Route::delete('/{user}/kick', 'kick')->middleware('throttle:20,1');
     });
 });
