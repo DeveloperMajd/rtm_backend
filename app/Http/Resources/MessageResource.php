@@ -23,6 +23,10 @@ class MessageResource extends JsonResource
                 'name' => $this->sender->name,
             ]),
             'reactions' => MessageReactionResource::collection($this->whenLoaded('reactions')),
+            'reply_to_message_id' => $this->reply_to_message_id,
+            'reply_to' => $this->whenLoaded('replyTo', fn () => $this->replyTo ? new MessageResource($this->replyTo) : null),
+            'edited_at' => $this->edited_at,
+            'deleted_at' => $this->deleted_at,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

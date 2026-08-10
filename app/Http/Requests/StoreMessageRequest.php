@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\Conversation;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreMessageRequest extends FormRequest
 {
@@ -33,6 +34,11 @@ class StoreMessageRequest extends FormRequest
         return [
             'conversation_id' => ['required', 'exists:conversations,id'],
             'body' => ['required', 'string'],
+            'reply_to_message_id' => [
+                'nullable',
+                'uuid',
+                Rule::exists('messages', 'id')->where('conversation_id', $this->input('conversation_id')),
+            ],
         ];
     }
 

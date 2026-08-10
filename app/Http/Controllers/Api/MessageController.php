@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Events\MessageSent;
+use App\Events\MessageUpdated;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\SearchMessagesRequest;
 use App\Http\Requests\StoreMessageRequest;
+use App\Http\Requests\UpdateMessageRequest;
 use App\Http\Resources\MessageResource;
 use App\Http\Resources\MessageSearchResource;
 use App\Models\Conversation;
@@ -13,6 +15,7 @@ use App\Models\Message;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Http\Response;
 
 class MessageController extends Controller
 {
@@ -21,7 +24,7 @@ class MessageController extends Controller
         $perPage = $request->query('per_page', 10);
 
         $messages = $conversation->messages()
-            ->with(['sender:id,name', 'reactions.user:id,name'])
+            ->with(['sender:id,name', 'reactions.user:id,name', 'replyTo.sender:id,name'])
             ->latest()
             ->paginate($perPage);
 
@@ -37,18 +40,53 @@ class MessageController extends Controller
         $message = $conversation->messages()->create([
             'sender_user_id' => $request->user()->id,
             'body' => $request->input('body'),
+            'reply_to_message_id' => $request->input('reply_to_message_id'),
         ]);
 
         $conversation->last_message_at = now();
         $conversation->save();
 
-        $message->load(['sender', 'reactions.user:id,name']);
+        $message->load(['sender', 'reactions.user:id,name', 'replyTo.sender:id,name']);
 
         broadcast(new MessageSent($message));
 
         return (new MessageResource($message))
             ->response()
             ->setStatusCode(201);
+    }
+
+    public function update(UpdateMessageRequest $request, Message $message): MessageResource
+    {
+        $message->body = $request->input('body');
+        $message->edited_at = now();
+        $message->save();
+
+        $message->load(['sender', 'reactions.user:id,name', 'replyTo.sender:id,name']);
+
+        broadcast(new MessageUpdated($message));
+
+        return new MessageResource($message);
+    }
+
+    public function destroy(Request $request, Message $message): Response
+    {
+        if ($message->sender_user_id !== $request->user()->id) {
+            return response()->noContent(403);
+        }
+
+        if ($message->deleted_at !== null) {
+            return response()->noContent();
+        }
+
+        $message->body = '';
+        $message->deleted_at = now();
+        $message->save();
+
+        $message->load(['sender', 'reactions.user:id,name', 'replyTo.sender:id,name']);
+
+        broadcast(new MessageUpdated($message));
+
+        return response()->noContent();
     }
 
     public function search(SearchMessagesRequest $request): AnonymousResourceCollection

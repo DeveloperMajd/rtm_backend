@@ -22,7 +22,20 @@ class Message extends Model
         'conversation_id',
         'sender_user_id',
         'body',
+        'reply_to_message_id',
+        'body_format',
     ];
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'edited_at' => 'datetime',
+            'deleted_at' => 'datetime',
+        ];
+    }
 
     // Relationships
     public function conversation(): BelongsTo
@@ -38,5 +51,10 @@ class Message extends Model
     public function reactions(): HasMany
     {
         return $this->hasMany(MessageReaction::class);
+    }
+
+    public function replyTo(): BelongsTo
+    {
+        return $this->belongsTo(Message::class, 'reply_to_message_id');
     }
 }
