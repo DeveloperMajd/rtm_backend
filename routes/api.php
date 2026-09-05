@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\ConversationParticipantController;
 use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\MessageReactionController;
+use App\Http\Controllers\Api\PresenceController;
 use App\Http\Controllers\Api\SocialAuthController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
@@ -48,6 +49,11 @@ Route::middleware(['web', 'auth:sanctum'])->group(function () {
     });
 
     Route::get('/users', [UserController::class, 'index']);
+
+    Route::controller(PresenceController::class)->prefix('presence')->group(function () {
+        Route::post('/heartbeat', 'heartbeat')->middleware('throttle:20,1');
+        Route::post('/leave', 'leave');
+    });
 
     Route::prefix('conversations/{conversation}/participants')->controller(ConversationParticipantController::class)->group(function () {
         Route::get('/', 'index');

@@ -19,7 +19,7 @@ class ConversationController extends Controller
     {
         $conversations = Conversation::whereHas('participants', function ($query) use ($request): void {
             $query->where('user_id', $request->user()->id);
-        })->with(['latestMessage.sender', 'participants.user'])->get();
+        })->with(['lastMessage.sender', 'participants.user'])->get();
 
         return ConversationResource::collection($conversations);
     }

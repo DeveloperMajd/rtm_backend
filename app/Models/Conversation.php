@@ -31,6 +31,7 @@ class Conversation extends Model
     {
         return [
             'last_message_at' => 'datetime',
+            'metadata' => 'array',
         ];
     }
 
@@ -50,8 +51,8 @@ class Conversation extends Model
         return $this->hasMany(Message::class);
     }
 
-    public function latestMessage()
+    public function lastMessage(): BelongsTo
     {
-        return $this->hasOne(Message::class)->latestOfMany('created_at');
+        return $this->belongsTo(Message::class, 'last_message_id');
     }
 }

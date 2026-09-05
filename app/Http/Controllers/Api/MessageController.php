@@ -44,6 +44,7 @@ class MessageController extends Controller
         ]);
 
         $conversation->last_message_at = now();
+        $conversation->last_message_id = $message->id;
         $conversation->save();
 
         $message->load(['sender', 'reactions.user:id,name', 'replyTo.sender:id,name']);

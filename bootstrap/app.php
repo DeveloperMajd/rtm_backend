@@ -19,6 +19,13 @@ return Application::configure(basePath: dirname(__DIR__))
             except: ['api/auth/register', 'api/auth/login'],
             allowSameSite: true,
         );
+
+        // This is an API-only backend with no server-rendered login page, so
+        // there is no "login" named route to redirect guests to. Without this,
+        // an unauthenticated request that doesn't send Accept: application/json
+        // (e.g. navigator.sendBeacon, which can't set custom headers) crashes
+        // with "Route [login] not defined" instead of getting a clean 401.
+        $middleware->redirectGuestsTo(fn () => null);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
