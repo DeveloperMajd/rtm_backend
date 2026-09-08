@@ -10,6 +10,7 @@ use App\Http\Requests\StoreMessageRequest;
 use App\Http\Requests\UpdateMessageRequest;
 use App\Http\Resources\MessageResource;
 use App\Http\Resources\MessageSearchResource;
+use App\Models\Attachment;
 use App\Models\Conversation;
 use App\Models\Message;
 use Illuminate\Http\JsonResponse;
@@ -24,7 +25,7 @@ class MessageController extends Controller
         $perPage = $request->query('per_page', 10);
 
         $messages = $conversation->messages()
-            ->with(['sender:id,name', 'reactions.user:id,name', 'replyTo.sender:id,name'])
+            ->with(['sender:id,name', 'reactions.user:id,name', 'replyTo.sender:id,name', 'attachments'])
             ->latest()
             ->paginate($perPage);
 
@@ -39,15 +40,31 @@ class MessageController extends Controller
 
         $message = $conversation->messages()->create([
             'sender_user_id' => $request->user()->id,
-            'body' => $request->input('body'),
+            'body' => $request->input('body') ?? '',
             'reply_to_message_id' => $request->input('reply_to_message_id'),
         ]);
+
+        $attachmentIds = $request->input('attachment_ids', []);
+
+        if ($attachmentIds !== []) {
+            // Claim the caller's own still-unlinked uploads (StoreMessageRequest
+            // has already validated ownership); the same guards here keep the
+            // update race-safe.
+            $linked = Attachment::query()
+                ->whereIn('id', $attachmentIds)
+                ->where('uploaded_by_user_id', $request->user()->id)
+                ->whereNull('message_id')
+                ->update(['message_id' => $message->id]);
+
+            $message->attachments_count = $linked;
+            $message->save();
+        }
 
         $conversation->last_message_at = now();
         $conversation->last_message_id = $message->id;
         $conversation->save();
 
-        $message->load(['sender', 'reactions.user:id,name', 'replyTo.sender:id,name']);
+        $message->load(['sender', 'reactions.user:id,name', 'replyTo.sender:id,name', 'attachments']);
 
         broadcast(new MessageSent($message));
 
@@ -62,7 +79,7 @@ class MessageController extends Controller
         $message->edited_at = now();
         $message->save();
 
-        $message->load(['sender', 'reactions.user:id,name', 'replyTo.sender:id,name']);
+        $message->load(['sender', 'reactions.user:id,name', 'replyTo.sender:id,name', 'attachments']);
 
         broadcast(new MessageUpdated($message));
 
@@ -83,7 +100,7 @@ class MessageController extends Controller
         $message->deleted_at = now();
         $message->save();
 
-        $message->load(['sender', 'reactions.user:id,name', 'replyTo.sender:id,name']);
+        $message->load(['sender', 'reactions.user:id,name', 'replyTo.sender:id,name', 'attachments']);
 
         broadcast(new MessageUpdated($message));
 

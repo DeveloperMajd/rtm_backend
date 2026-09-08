@@ -34,6 +34,7 @@ class Message extends Model
         return [
             'edited_at' => 'datetime',
             'deleted_at' => 'datetime',
+            'attachments_count' => 'integer',
         ];
     }
 
@@ -56,5 +57,10 @@ class Message extends Model
     public function replyTo(): BelongsTo
     {
         return $this->belongsTo(Message::class, 'reply_to_message_id');
+    }
+
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(Attachment::class);
     }
 }

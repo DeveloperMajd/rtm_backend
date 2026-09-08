@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AttachmentController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\ConversationParticipantController;
@@ -41,6 +42,11 @@ Route::middleware(['web', 'auth:sanctum'])->group(function () {
         Route::patch('/messages/{message}', 'update')->middleware('throttle:30,1');
         Route::delete('/messages/{message}', 'destroy')->middleware('throttle:30,1');
         Route::get('/conversations/{conversation}/messages', 'index');
+    });
+
+    Route::controller(AttachmentController::class)->group(function () {
+        Route::post('/attachments', 'store')->middleware('throttle:30,1');
+        Route::get('/attachments/{attachment}', 'show');
     });
 
     Route::prefix('messages/{message}/reactions')->controller(MessageReactionController::class)->group(function () {
