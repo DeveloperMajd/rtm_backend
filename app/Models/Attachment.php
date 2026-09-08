@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -57,7 +58,10 @@ class Attachment extends Model
      */
     public function temporaryUrl(): string
     {
-        return Storage::disk($this->disk)->temporaryUrl($this->path, now()->addMinutes(30));
+        /** @var FilesystemAdapter $disk */
+        $disk = Storage::disk($this->disk);
+
+        return $disk->temporaryUrl($this->path, now()->addMinutes(30));
     }
 
     // Relationships

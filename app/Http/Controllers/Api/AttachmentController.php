@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreAttachmentRequest;
 use App\Http\Resources\AttachmentResource;
 use App\Models\Attachment;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -58,7 +59,10 @@ class AttachmentController extends Controller
             abort(403);
         }
 
-        $url = Storage::disk($attachment->disk)->temporaryUrl(
+        /** @var FilesystemAdapter $disk */
+        $disk = Storage::disk($attachment->disk);
+
+        $url = $disk->temporaryUrl(
             $attachment->path,
             now()->addMinutes(5),
             ['ResponseContentDisposition' => 'attachment; filename="'.addslashes($attachment->original_name).'"'],
