@@ -17,6 +17,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Avatar Disk
+    |--------------------------------------------------------------------------
+    |
+    | Profile avatars are public and long-lived, so they live on a disk that
+    | can hand out a stable, cacheable URL: the "public" disk locally (needs
+    | `php artisan storage:link`) and the "s3" disk (Cloudflare R2, public
+    | bucket via AWS_URL) in production.
+    |
+    */
+
+    'avatars' => env('AVATAR_DISK', 'public'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |

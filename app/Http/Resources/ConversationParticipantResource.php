@@ -18,6 +18,7 @@ class ConversationParticipantResource extends JsonResource
         return [
             'user_id' => $this->user_id,
             'name' => $this->user?->name,
+            'avatar_url' => $this->user?->avatar_url,
             'role' => $this->role,
             'joined_at' => $this->joined_at,
             'is_online' => app(PresenceService::class)->isOnline($this->user_id),

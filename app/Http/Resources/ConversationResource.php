@@ -33,6 +33,7 @@ class ConversationResource extends JsonResource
                     return $other ? [
                         'id' => $other->user_id,
                         'name' => $other->user?->name,
+                        'avatar_url' => $other->user?->avatar_url,
                         'is_online' => in_array($other->user_id, $onlineUserIds, true),
                         'last_seen_at' => $other->user?->last_seen_at,
                     ] : null;
@@ -48,6 +49,7 @@ class ConversationResource extends JsonResource
                 return $this->participants->map(fn ($p) => [
                     'user_id' => $p->user_id,
                     'name' => $p->user?->name,
+                    'avatar_url' => $p->user?->avatar_url,
                     'role' => $p->role,
                     'is_online' => in_array($p->user_id, $onlineUserIds, true),
                     'last_seen_at' => $p->user?->last_seen_at,

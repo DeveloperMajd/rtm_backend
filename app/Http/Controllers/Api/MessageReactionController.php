@@ -19,7 +19,7 @@ class MessageReactionController extends Controller
             'reaction' => $request->input('reaction'),
         ]);
 
-        $message->load(['sender:id,name', 'reactions.user:id,name', 'attachments']);
+        $message->load(['sender:id,name,avatar_url', 'reactions.user:id,name,avatar_url', 'attachments']);
 
         broadcast(new MessageReactionUpdated($message));
 
@@ -41,7 +41,7 @@ class MessageReactionController extends Controller
             ->where('reaction', $reaction)
             ->delete();
 
-        $message->load(['sender:id,name', 'reactions.user:id,name', 'attachments']);
+        $message->load(['sender:id,name,avatar_url', 'reactions.user:id,name,avatar_url', 'attachments']);
 
         broadcast(new MessageReactionUpdated($message));
 

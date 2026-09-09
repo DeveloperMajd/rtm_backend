@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\ConversationParticipantController;
 use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\MessageReactionController;
 use App\Http\Controllers\Api\PresenceController;
+use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\SocialAuthController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
@@ -55,6 +56,13 @@ Route::middleware(['web', 'auth:sanctum'])->group(function () {
     });
 
     Route::get('/users', [UserController::class, 'index']);
+
+    Route::prefix('profile')->controller(ProfileController::class)->group(function () {
+        Route::get('/', 'show');
+        Route::patch('/', 'update');
+        Route::post('/avatar', 'updateAvatar')->middleware('throttle:10,1');
+        Route::delete('/avatar', 'destroyAvatar');
+    });
 
     Route::controller(PresenceController::class)->prefix('presence')->group(function () {
         Route::post('/heartbeat', 'heartbeat')->middleware('throttle:20,1');

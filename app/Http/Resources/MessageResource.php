@@ -21,6 +21,7 @@ class MessageResource extends JsonResource
             'sender' => $this->whenLoaded('sender', fn () => [
                 'id' => $this->sender->id,
                 'name' => $this->sender->name,
+                'avatar_url' => $this->sender->avatar_url,
             ]),
             'reactions' => MessageReactionResource::collection($this->whenLoaded('reactions')),
             'attachments_count' => $this->attachments_count,

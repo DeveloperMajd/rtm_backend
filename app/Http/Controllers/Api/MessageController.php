@@ -25,7 +25,7 @@ class MessageController extends Controller
         $perPage = $request->query('per_page', 10);
 
         $messages = $conversation->messages()
-            ->with(['sender:id,name', 'reactions.user:id,name', 'replyTo.sender:id,name', 'attachments'])
+            ->with(['sender:id,name,avatar_url', 'reactions.user:id,name,avatar_url', 'replyTo.sender:id,name,avatar_url', 'attachments'])
             ->latest()
             ->paginate($perPage);
 
@@ -64,7 +64,7 @@ class MessageController extends Controller
         $conversation->last_message_id = $message->id;
         $conversation->save();
 
-        $message->load(['sender', 'reactions.user:id,name', 'replyTo.sender:id,name', 'attachments']);
+        $message->load(['sender', 'reactions.user:id,name,avatar_url', 'replyTo.sender:id,name,avatar_url', 'attachments']);
 
         broadcast(new MessageSent($message));
 
@@ -79,7 +79,7 @@ class MessageController extends Controller
         $message->edited_at = now();
         $message->save();
 
-        $message->load(['sender', 'reactions.user:id,name', 'replyTo.sender:id,name', 'attachments']);
+        $message->load(['sender', 'reactions.user:id,name,avatar_url', 'replyTo.sender:id,name,avatar_url', 'attachments']);
 
         broadcast(new MessageUpdated($message));
 
@@ -100,7 +100,7 @@ class MessageController extends Controller
         $message->deleted_at = now();
         $message->save();
 
-        $message->load(['sender', 'reactions.user:id,name', 'replyTo.sender:id,name', 'attachments']);
+        $message->load(['sender', 'reactions.user:id,name,avatar_url', 'replyTo.sender:id,name,avatar_url', 'attachments']);
 
         broadcast(new MessageUpdated($message));
 
@@ -122,7 +122,7 @@ class MessageController extends Controller
         $messages = Message::query()
             ->whereHas('conversation.participants', fn ($q) => $q->where('user_id', $request->user()->id))
             ->whereRaw("search_vector @@ {$tsQuery}", [$query, $query])
-            ->with(['sender:id,name', 'conversation.participants.user'])
+            ->with(['sender:id,name,avatar_url', 'conversation.participants.user'])
             ->orderByRaw("ts_rank(search_vector, {$tsQuery}) DESC", [$query, $query])
             ->limit(20)
             ->get();

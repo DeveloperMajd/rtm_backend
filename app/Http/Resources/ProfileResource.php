@@ -2,15 +2,16 @@
 
 namespace App\Http\Resources;
 
-use App\Services\PresenceService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class UserResource extends JsonResource
+/**
+ * The authenticated user's own profile — includes fields (email, bio) that
+ * are not exposed about other users via UserResource.
+ */
+class ProfileResource extends JsonResource
 {
     /**
-     * Transform the resource into an array.
-     *
      * @return array<string, mixed>
      */
     public function toArray(Request $request): array
@@ -18,9 +19,9 @@ class UserResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
+            'email' => $this->email,
             'avatar_url' => $this->avatar_url,
-            'is_online' => app(PresenceService::class)->isOnline($this->id),
-            'last_seen_at' => $this->last_seen_at,
+            'bio' => $this->bio,
         ];
     }
 }

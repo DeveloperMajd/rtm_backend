@@ -30,6 +30,7 @@ class MessageSearchResource extends JsonResource
             'sender' => [
                 'id' => $this->sender->id,
                 'name' => $this->sender->name,
+                'avatar_url' => $this->sender->avatar_url,
             ],
             'created_at' => $this->created_at,
         ];

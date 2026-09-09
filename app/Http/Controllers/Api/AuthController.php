@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
-use App\Http\Resources\UserResource;
+use App\Http\Resources\ProfileResource;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,7 +26,7 @@ class AuthController extends Controller
 
         $request->session()->regenerate();
 
-        return (new UserResource($user))
+        return (new ProfileResource($user))
             ->response()
             ->setStatusCode(201);
     }
@@ -39,7 +39,7 @@ class AuthController extends Controller
 
         $request->session()->regenerate();
 
-        return (new UserResource(Auth::user()))
+        return (new ProfileResource(Auth::user()))
             ->response();
     }
 
@@ -53,8 +53,8 @@ class AuthController extends Controller
         return response()->noContent();
     }
 
-    public function me(Request $request): UserResource
+    public function me(Request $request): ProfileResource
     {
-        return new UserResource($request->user());
+        return new ProfileResource($request->user());
     }
 }
