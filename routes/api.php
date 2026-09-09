@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AttachmentController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\ConversationParticipantController;
 use App\Http\Controllers\Api\MessageController;
@@ -9,7 +10,6 @@ use App\Http\Controllers\Api\MessageReactionController;
 use App\Http\Controllers\Api\PresenceController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\SocialAuthController;
-use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->middleware('web')->group(function () {
@@ -55,7 +55,12 @@ Route::middleware(['web', 'auth:sanctum'])->group(function () {
         Route::delete('/{reaction}', 'destroy')->middleware('throttle:60,1');
     });
 
-    Route::get('/users', [UserController::class, 'index']);
+    Route::prefix('contacts')->controller(ContactController::class)->group(function () {
+        Route::get('/', 'index');
+        Route::get('/search', 'search')->middleware('throttle:20,1');
+        Route::post('/', 'store')->middleware('throttle:20,1');
+        Route::delete('/{user}', 'destroy');
+    });
 
     Route::prefix('profile')->controller(ProfileController::class)->group(function () {
         Route::get('/', 'show');

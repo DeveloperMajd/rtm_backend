@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -59,5 +60,14 @@ class User extends Authenticatable
     public function authProviders(): HasMany
     {
         return $this->hasMany(UserAuthProvider::class);
+    }
+
+    /**
+     * The users this user has added to their personal contact list.
+     */
+    public function contacts(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'contacts', 'user_id', 'contact_user_id')
+            ->withTimestamps();
     }
 }

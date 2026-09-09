@@ -55,14 +55,14 @@ test('onlineUserIds only returns the ids that currently have a presence key', fu
     expect($service->onlineUserIds([$online->id, $offline->id]))->toBe([$online->id]);
 });
 
-test('the users list surfaces is_online per user', function () {
+test('the contact directory search surfaces is_online per user', function () {
     $viewer = User::factory()->create();
-    $online = User::factory()->create();
-    $offline = User::factory()->create();
+    $online = User::factory()->create(['name' => 'Zephyr Online']);
+    $offline = User::factory()->create(['name' => 'Zephyr Offline']);
 
     app(PresenceService::class)->heartbeat($online);
 
-    $response = $this->actingAs($viewer)->getJson('/api/users');
+    $response = $this->actingAs($viewer)->getJson('/api/contacts/search?q=Zephyr');
 
     $response->assertOk();
     $data = collect($response->json('data'));

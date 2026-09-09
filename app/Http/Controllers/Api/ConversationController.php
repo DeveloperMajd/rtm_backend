@@ -7,6 +7,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreConversationRequest;
 use App\Http\Resources\ConversationResource;
 use App\Models\Conversation;
+use App\Models\User;
+use App\Services\ConversationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -37,23 +39,18 @@ class ConversationController extends Controller
         return new ConversationResource($conversation);
     }
 
-    public function store(StoreConversationRequest $request): JsonResponse
+    public function store(StoreConversationRequest $request, ConversationService $conversations): JsonResponse
     {
         $type = $request->input('type', 'direct');
 
         if ($type === 'direct') {
-            $otherUserId = $request->input('participant_ids')[0];
+            $other = User::findOrFail($request->input('participant_ids')[0]);
+            $conversation = $conversations->findOrCreateDirect($request->user(), $other);
+            $conversation->load('participants.user');
 
-            $existing = Conversation::where('type', 'direct')
-                ->whereHas('participants', fn ($query) => $query->where('user_id', $request->user()->id))
-                ->whereHas('participants', fn ($query) => $query->where('user_id', $otherUserId))
-                ->first();
-
-            if ($existing) {
-                $existing->load('participants.user');
-
-                return (new ConversationResource($existing))->response();
-            }
+            return (new ConversationResource($conversation))
+                ->response()
+                ->setStatusCode($conversation->wasRecentlyCreated ? 201 : 200);
         }
 
         $conversation = DB::transaction(function () use ($request): Conversation {

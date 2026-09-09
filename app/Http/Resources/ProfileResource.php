@@ -7,7 +7,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * The authenticated user's own profile — includes fields (email, bio) that
- * are not exposed about other users via UserResource.
+ * are not exposed about other users.
  */
 class ProfileResource extends JsonResource
 {

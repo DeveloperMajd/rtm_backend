@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Contact;
 use App\Models\Conversation;
 use App\Models\ConversationParticipant;
 use App\Models\Message;
@@ -44,6 +45,21 @@ class DatabaseSeeder extends Seeder
         $conv3 = Conversation::factory()->group('The Gang')->create(['created_by_user_id' => $alice->id]);
         $this->addParticipants($conv3->id, [$alice->id, $bob->id, $charlie->id], adminId: $alice->id);
         $this->seedMessages($conv3->id, [$alice->id, $bob->id, $charlie->id], 6);
+
+        // Everyone has everyone else in their contacts.
+        $people = [$alice, $bob, $charlie];
+        foreach ($people as $person) {
+            foreach ($people as $other) {
+                if ($person->is($other)) {
+                    continue;
+                }
+
+                Contact::firstOrCreate([
+                    'user_id' => $person->id,
+                    'contact_user_id' => $other->id,
+                ]);
+            }
+        }
     }
 
     /** @param array<string> $userIds */
@@ -61,13 +77,18 @@ class DatabaseSeeder extends Seeder
     /** @param array<string> $senderIds */
     private function seedMessages(string $conversationId, array $senderIds, int $count): void
     {
+        $last = null;
+
         for ($i = 0; $i < $count; $i++) {
-            Message::factory()->create([
+            $last = Message::factory()->create([
                 'conversation_id' => $conversationId,
                 'sender_user_id' => $senderIds[$i % count($senderIds)],
             ]);
         }
 
-        Conversation::where('id', $conversationId)->update(['last_message_at' => now()]);
+        Conversation::where('id', $conversationId)->update([
+            'last_message_at' => now(),
+            'last_message_id' => $last?->id,
+        ]);
     }
 }
