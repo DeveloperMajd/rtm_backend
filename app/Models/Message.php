@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -24,6 +25,9 @@ class Message extends Model
         'body',
         'reply_to_message_id',
         'body_format',
+        'type',
+        'event_type',
+        'metadata',
     ];
 
     /**
@@ -35,7 +39,16 @@ class Message extends Model
             'edited_at' => 'datetime',
             'deleted_at' => 'datetime',
             'attachments_count' => 'integer',
+            'metadata' => 'array',
         ];
+    }
+
+    /**
+     * Real, user-authored messages — excludes system/group-event lines.
+     */
+    public function scopeUserMessages(Builder $query): Builder
+    {
+        return $query->where('type', 'user');
     }
 
     // Relationships

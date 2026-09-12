@@ -21,6 +21,7 @@ class ConversationParticipantResource extends JsonResource
             'avatar_url' => $this->user?->avatar_url,
             'role' => $this->role,
             'joined_at' => $this->joined_at,
+            'left_at' => $this->left_at,
             'is_online' => app(PresenceService::class)->isOnline($this->user_id),
             'last_seen_at' => $this->user?->last_seen_at,
         ];

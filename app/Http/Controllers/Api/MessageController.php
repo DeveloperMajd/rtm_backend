@@ -20,14 +20,29 @@ use Illuminate\Http\Response;
 
 class MessageController extends Controller
 {
-    public function index(Request $request, Conversation $conversation): AnonymousResourceCollection
+    public function index(Request $request, Conversation $conversation): AnonymousResourceCollection|JsonResponse
     {
+        $participant = $conversation->participants()->where('user_id', $request->user()->id)->first();
+
+        if (! $participant) {
+            return response()->json(['data' => ['message' => 'Forbidden']], 403);
+        }
+
         $perPage = $request->query('per_page', 10);
 
-        $messages = $conversation->messages()
-            ->with(['sender:id,name,avatar_url', 'reactions.user:id,name,avatar_url', 'replyTo.sender:id,name,avatar_url', 'attachments'])
-            ->latest()
-            ->paginate($perPage);
+        $query = $conversation->messages()
+            ->with(['sender:id,name,avatar_url', 'reactions.user:id,name,avatar_url', 'replyTo.sender:id,name,avatar_url', 'attachments']);
+
+        // A member who has left (or been removed) sees history frozen at the
+        // moment they left — no new messages, per the read-only group rule.
+        if ($participant->left_at_message_id !== null) {
+            $query->where('id', '<=', $participant->left_at_message_id);
+        }
+
+        // Order by id, not created_at: ids are UUIDv7 (precisely, monotonically
+        // time-ordered); the timestamp column is only second-precision, which
+        // is ambiguous whenever two messages land in the same second.
+        $messages = $query->latest('id')->paginate($perPage);
 
         $messages->setCollection($messages->getCollection()->reverse()->values());
 

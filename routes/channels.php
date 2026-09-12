@@ -15,5 +15,5 @@ Broadcast::channel('conversation.{conversationId}', function (User $user, string
         return false;
     }
 
-    return $conversation->participants()->where('user_id', $user->id)->exists();
+    return $conversation->participants()->where('user_id', $user->id)->whereNull('left_at')->exists();
 });

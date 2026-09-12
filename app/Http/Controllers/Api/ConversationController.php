@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Events\TypingIndicator;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreConversationRequest;
+use App\Http\Requests\UpdateConversationRequest;
 use App\Http\Resources\ConversationResource;
 use App\Models\Conversation;
 use App\Models\User;
+use App\Services\ConversationParticipantService;
 use App\Services\ConversationService;
+use App\Services\SystemMessageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -39,14 +42,17 @@ class ConversationController extends Controller
         return new ConversationResource($conversation);
     }
 
-    public function store(StoreConversationRequest $request, ConversationService $conversations): JsonResponse
-    {
+    public function store(
+        StoreConversationRequest $request,
+        ConversationService $conversations,
+        SystemMessageService $systemMessages,
+    ): JsonResponse {
         $type = $request->input('type', 'direct');
 
         if ($type === 'direct') {
             $other = User::findOrFail($request->input('participant_ids')[0]);
             $conversation = $conversations->findOrCreateDirect($request->user(), $other);
-            $conversation->load('participants.user');
+            $conversation->load(['participants.user', 'lastMessage.sender']);
 
             return (new ConversationResource($conversation))
                 ->response()
@@ -79,11 +85,27 @@ class ConversationController extends Controller
             return $conversation;
         });
 
-        $conversation->load('participants.user');
+        $systemMessages->record($conversation, 'group_created', [
+            'actor_id' => $request->user()->id,
+            'actor_name' => $request->user()->name,
+        ]);
+
+        $conversation->load(['participants.user', 'lastMessage.sender']);
 
         return (new ConversationResource($conversation))
             ->response()
             ->setStatusCode(201);
+    }
+
+    public function update(
+        UpdateConversationRequest $request,
+        Conversation $conversation,
+        ConversationParticipantService $service,
+    ): ConversationResource {
+        $service->rename($conversation, $request->user(), $request->input('title'));
+        $conversation->load(['participants.user', 'lastMessage.sender']);
+
+        return new ConversationResource($conversation);
     }
 
     public function typing(Request $request, Conversation $conversation): Response

@@ -20,6 +20,7 @@ class MessageSent implements ShouldBroadcast
     {
         $participantChannels = $this->message->conversation
             ->participants()
+            ->whereNull('left_at')
             ->pluck('user_id')
             ->map(fn ($userId) => new PrivateChannel('App.Models.User.'.$userId))
             ->all();

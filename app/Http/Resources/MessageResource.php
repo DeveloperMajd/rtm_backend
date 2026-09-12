@@ -17,12 +17,16 @@ class MessageResource extends JsonResource
         return [
             'id' => $this->id,
             'conversation_id' => $this->conversation_id,
+            'type' => $this->type,
+            'event_type' => $this->event_type,
+            'metadata' => $this->metadata,
             'body' => $this->body,
-            'sender' => $this->whenLoaded('sender', fn () => [
+            // A system message (group event line) has no human sender.
+            'sender' => $this->whenLoaded('sender', fn () => $this->sender ? [
                 'id' => $this->sender->id,
                 'name' => $this->sender->name,
                 'avatar_url' => $this->sender->avatar_url,
-            ]),
+            ] : null),
             'reactions' => MessageReactionResource::collection($this->whenLoaded('reactions')),
             'attachments_count' => $this->attachments_count,
             'attachments' => $this->whenLoaded('attachments', fn () => $this->deleted_at

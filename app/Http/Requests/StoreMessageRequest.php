@@ -21,6 +21,7 @@ class StoreMessageRequest extends FormRequest
 
         return $conversation->participants()
             ->where('user_id', $this->user()->id)
+            ->whereNull('left_at')
             ->exists();
     }
 

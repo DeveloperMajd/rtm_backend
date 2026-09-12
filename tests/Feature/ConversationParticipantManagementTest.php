@@ -98,17 +98,21 @@ test('participants cannot be added to a direct conversation', function () {
         ->assertForbidden();
 });
 
-test('an admin can kick another participant', function () {
+test('an admin can kick another participant, keeping their row read-only', function () {
     [$admin, $member, $conversation] = groupConversation();
 
     $this->actingAs($admin)
         ->deleteJson("/api/conversations/{$conversation->id}/participants/{$member->id}/kick")
         ->assertOk();
 
-    $this->assertDatabaseMissing('conversation_participants', [
-        'conversation_id' => $conversation->id,
-        'user_id' => $member->id,
-    ]);
+    // The row stays (WhatsApp-style: the group stays on their list, greyed
+    // out) instead of being deleted — only `left_at` gets set.
+    $participant = ConversationParticipant::where('conversation_id', $conversation->id)
+        ->where('user_id', $member->id)
+        ->first();
+
+    expect($participant)->not->toBeNull();
+    expect($participant->left_at)->not->toBeNull();
 });
 
 test('an admin cannot kick themselves', function () {

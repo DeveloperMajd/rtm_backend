@@ -64,7 +64,7 @@ class ContactController extends Controller
         ]);
 
         $conversation = $conversations->findOrCreateDirect($user, $target);
-        $conversation->load('participants.user');
+        $conversation->load(['participants.user', 'lastMessage.sender']);
 
         return response()->json([
             'data' => [

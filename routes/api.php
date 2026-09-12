@@ -33,6 +33,7 @@ Route::middleware(['web', 'auth:sanctum'])->group(function () {
         Route::get('/', 'index');
         Route::post('/', 'store')->middleware('throttle:10,1');
         Route::get('/{conversation}', 'show');
+        Route::patch('/{conversation}', 'update')->middleware('throttle:20,1');
         Route::post('/{conversation}/typing', 'typing')->middleware('throttle:30,1');
         Route::post('/{conversation}/read', 'markAsRead')->middleware('throttle:30,1');
     });
@@ -77,6 +78,7 @@ Route::middleware(['web', 'auth:sanctum'])->group(function () {
     Route::prefix('conversations/{conversation}/participants')->controller(ConversationParticipantController::class)->group(function () {
         Route::get('/', 'index');
         Route::post('/', 'store')->middleware('throttle:20,1');
+        Route::patch('/{user}', 'update')->middleware('throttle:20,1');
         Route::delete('/{user}', 'destroy');
         Route::delete('/{user}/kick', 'kick')->middleware('throttle:20,1');
     });
