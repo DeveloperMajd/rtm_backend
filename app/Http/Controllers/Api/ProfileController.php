@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ChangePasswordRequest;
 use App\Http\Requests\ProfileUpdateRequest;
 use App\Http\Requests\StoreAvatarRequest;
 use App\Http\Resources\ProfileResource;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Storage;
 
 class ProfileController extends Controller
@@ -24,6 +26,15 @@ class ProfileController extends Controller
         $user->save();
 
         return new ProfileResource($user);
+    }
+
+    public function updatePassword(ChangePasswordRequest $request): Response
+    {
+        $request->user()->forceFill([
+            'password' => $request->string('password')->toString(),
+        ])->save();
+
+        return response()->noContent();
     }
 
     public function updateAvatar(StoreAvatarRequest $request): ProfileResource

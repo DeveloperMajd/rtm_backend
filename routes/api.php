@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\ConversationParticipantController;
 use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\MessageReactionController;
+use App\Http\Controllers\Api\PasswordResetController;
 use App\Http\Controllers\Api\PresenceController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\SocialAuthController;
@@ -25,6 +26,11 @@ Route::prefix('auth')->middleware('web')->group(function () {
     Route::controller(SocialAuthController::class)->where(['provider' => 'google|facebook'])->group(function () {
         Route::get('/{provider}/redirect', 'redirect')->middleware('throttle:10,1');
         Route::get('/{provider}/callback', 'callback')->middleware('throttle:10,1');
+    });
+
+    Route::controller(PasswordResetController::class)->group(function () {
+        Route::post('/forgot-password', 'forgotPassword')->middleware('throttle:5,1');
+        Route::post('/reset-password', 'reset')->middleware('throttle:5,1');
     });
 });
 
@@ -66,6 +72,7 @@ Route::middleware(['web', 'auth:sanctum'])->group(function () {
     Route::prefix('profile')->controller(ProfileController::class)->group(function () {
         Route::get('/', 'show');
         Route::patch('/', 'update');
+        Route::patch('/password', 'updatePassword')->middleware('throttle:5,1');
         Route::post('/avatar', 'updateAvatar')->middleware('throttle:10,1');
         Route::delete('/avatar', 'destroyAvatar');
     });

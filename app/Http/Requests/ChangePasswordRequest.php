@@ -6,11 +6,11 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rules\Password;
 
-class RegisterRequest extends FormRequest
+class ChangePasswordRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        return $this->user() !== null;
     }
 
     /**
@@ -19,9 +19,15 @@ class RegisterRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
+            'current_password' => ['required', 'current_password'],
             'password' => ['required', 'confirmed', Password::defaults()],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'current_password.current_password' => 'Your current password is incorrect.',
         ];
     }
 }

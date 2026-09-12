@@ -16,7 +16,12 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->preventRequestForgery(
-            except: ['api/auth/register', 'api/auth/login'],
+            except: [
+                'api/auth/register',
+                'api/auth/login',
+                'api/auth/forgot-password',
+                'api/auth/reset-password',
+            ],
             allowSameSite: true,
         );
 
