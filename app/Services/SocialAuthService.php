@@ -18,12 +18,25 @@ class SocialAuthService
             return $authProvider->user;
         }
 
-        $user = User::where('email', $socialiteUser->getEmail())->first() ?? User::create([
-            'name' => $socialiteUser->getName() ?? $socialiteUser->getNickname(),
-            'email' => $socialiteUser->getEmail(),
-            'avatar_url' => $socialiteUser->getAvatar(),
-            'password' => null,
-        ]);
+        $user = User::where('email', $socialiteUser->getEmail())->first();
+
+        if ($user) {
+            // The provider has already verified this email address, so a
+            // successful OAuth login is proof enough — even if the account
+            // was originally created with a password and never verified.
+            if ($user->email_verified_at === null) {
+                $user->forceFill(['email_verified_at' => now()])->save();
+            }
+        } else {
+            $user = new User([
+                'name' => $socialiteUser->getName() ?? $socialiteUser->getNickname(),
+                'email' => $socialiteUser->getEmail(),
+                'avatar_url' => $socialiteUser->getAvatar(),
+                'password' => null,
+            ]);
+            $user->forceFill(['email_verified_at' => now()]);
+            $user->save();
+        }
 
         $user->authProviders()->create([
             'provider' => $provider,

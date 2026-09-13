@@ -35,6 +35,7 @@ it('creates a new user and links the provider identity on first login', function
     $user = User::where('email', 'ada@example.com')->firstOrFail();
     expect($user->password)->toBeNull();
     expect($user->avatar_url)->toBe('https://example.com/ada.jpg');
+    expect($user->email_verified_at)->not->toBeNull();
 
     $authProvider = UserAuthProvider::sole();
     expect($authProvider->user_id)->toBe($user->id);
@@ -55,7 +56,7 @@ it('reuses the same user on a repeat login from the same provider identity', fun
 });
 
 it('links a new provider identity to an existing password account with a matching email', function () {
-    $existingUser = User::factory()->create(['email' => 'ada@example.com']);
+    $existingUser = User::factory()->create(['email' => 'ada@example.com', 'email_verified_at' => null]);
     $originalPasswordHash = $existingUser->password;
 
     Socialite::fake('google', SocialiteUser::fake(['id' => 'google-123', 'email' => 'ada@example.com']));
@@ -69,8 +70,22 @@ it('links a new provider identity to an existing password account with a matchin
 
     $existingUser->refresh();
     expect($existingUser->password)->toBe($originalPasswordHash);
+    // Google already vouches for this email, so linking it verifies the
+    // account even though it was originally password-only and unverified.
+    expect($existingUser->email_verified_at)->not->toBeNull();
 
     $this->assertAuthenticatedAs($existingUser);
+});
+
+it('does not disturb an already-verified email when linking a provider', function () {
+    $verifiedAt = now()->subDays(3)->startOfSecond();
+    $existingUser = User::factory()->create(['email' => 'ada@example.com', 'email_verified_at' => $verifiedAt]);
+
+    Socialite::fake('google', SocialiteUser::fake(['id' => 'google-123', 'email' => 'ada@example.com']));
+
+    $this->get('/api/auth/google/callback');
+
+    expect($existingUser->fresh()->email_verified_at->equalTo($verifiedAt))->toBeTrue();
 });
 
 it('redirects to the frontend login with an error when the provider callback fails', function () {
