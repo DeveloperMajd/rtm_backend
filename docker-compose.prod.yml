@@ -7,13 +7,28 @@
 #   docker compose -f docker-compose.prod.yml build
 #   docker compose -f docker-compose.prod.yml run --rm app php artisan migrate --force
 #   docker compose -f docker-compose.prod.yml up -d
+#   docker compose -f docker-compose.prod.yml restart nginx
+#
+# That last restart is not optional: `up -d` only recreates the containers
+# whose image/config actually changed (app/queue/reverb on every real
+# deploy), and correctly leaves nginx alone since its own image never
+# changes. But nginx resolves the `app` hostname once, at its own startup —
+# it doesn't re-resolve per-request — so once `app` gets a new container
+# (and therefore a new internal IP), nginx keeps talking to the old, now-
+# dead IP until it's restarted too, and every request 502s with "Connection
+# refused" until that happens. See .github/workflows/deploy.yml.
 name: rtm
 
 services:
+  # app/queue/reverb all build from the same Dockerfile with no per-service
+  # build args — giving them the same `image:` tag means `docker compose
+  # build` builds it once and the other two just reuse that image, instead
+  # of rebuilding the identical Dockerfile three times on every deploy.
   app:
     build:
       context: .
       dockerfile: Dockerfile
+    image: rtm-app:latest
     container_name: rtm-app
     restart: unless-stopped
     env_file: ./.env
@@ -35,9 +50,7 @@ services:
       - web
 
   queue:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: rtm-app:latest
     container_name: rtm-queue
     restart: unless-stopped
     env_file: ./.env
@@ -46,11 +59,11 @@ services:
       - storage-app:/var/www/html/storage/app
     networks:
       - rtm-internal
+    depends_on:
+      - app
 
   reverb:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: rtm-app:latest
     container_name: rtm-reverb
     restart: unless-stopped
     env_file: ./.env
@@ -60,6 +73,8 @@ services:
     networks:
       - rtm-internal
       - web
+    depends_on:
+      - app
 
 networks:
   rtm-internal:

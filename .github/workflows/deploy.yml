@@ -1,0 +1,38 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  # Lets you re-run a deploy manually from the Actions tab without needing
+  # an empty commit — e.g. to pick up a change made only on the server, or
+  # to retry after a transient failure.
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      # The server already has its own clone at /opt/apps/rtm — this just
+      # tells it to pull and rebuild, rather than shipping code from the
+      # runner. See docker-compose.prod.yml's own comment for why the
+      # final `restart nginx` isn't optional.
+      - name: Deploy over SSH
+        run: |
+          ssh -i ~/.ssh/deploy_key "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" 'bash -s' <<'REMOTE'
+            set -e
+            cd /opt/apps/rtm
+            git fetch origin main
+            git reset --hard origin/main
+            docker compose -f docker-compose.prod.yml build
+            docker compose -f docker-compose.prod.yml run --rm app php artisan migrate --force
+            docker compose -f docker-compose.prod.yml up -d
+            docker compose -f docker-compose.prod.yml restart nginx
+            docker image prune -f
+          REMOTE
