@@ -1,0 +1,71 @@
+# Production stack for RTM's backend. Deployed on the shared Oracle VM,
+# alongside other unrelated projects — `web` is an external network shared
+# with the one Caddy instance that reverse-proxies every project on the box
+# by subdomain (see the separate proxy stack, not part of this repo).
+#
+# Deploy flow (run on the server, from this file's directory):
+#   docker compose -f docker-compose.prod.yml build
+#   docker compose -f docker-compose.prod.yml run --rm app php artisan migrate --force
+#   docker compose -f docker-compose.prod.yml up -d
+name: rtm
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rtm-app
+    restart: unless-stopped
+    env_file: ./.env
+    volumes:
+      - storage-app:/var/www/html/storage/app
+    networks:
+      - rtm-internal
+
+  nginx:
+    image: nginx:alpine
+    container_name: rtm-nginx
+    restart: unless-stopped
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+    networks:
+      - rtm-internal
+      - web
+
+  queue:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rtm-queue
+    restart: unless-stopped
+    env_file: ./.env
+    command: ["php", "artisan", "queue:work", "redis", "--sleep=1", "--tries=3", "--max-time=3600"]
+    volumes:
+      - storage-app:/var/www/html/storage/app
+    networks:
+      - rtm-internal
+
+  reverb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rtm-reverb
+    restart: unless-stopped
+    env_file: ./.env
+    # No --host/--port flags: falls back to REVERB_SERVER_HOST/PORT in .env,
+    # keeping one source of truth instead of two places to update.
+    command: ["php", "artisan", "reverb:start"]
+    networks:
+      - rtm-internal
+      - web
+
+networks:
+  rtm-internal:
+    driver: bridge
+  web:
+    external: true
+
+volumes:
+  storage-app:

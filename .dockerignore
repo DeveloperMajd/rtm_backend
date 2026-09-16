@@ -1,0 +1,20 @@
+# Never bake these into the image, regardless of what happens to exist in
+# the local build context — the build should be reproducible from a clean
+# `git clone`, not accidentally depend on local-only leftovers.
+.git
+.github
+.env
+.env.*
+!.env.example
+!.env.production.example
+node_modules
+vendor
+bootstrap/cache/*.php
+storage/logs/*
+storage/framework/cache/data/*
+storage/framework/sessions/*
+storage/framework/views/*
+tests
+.phpunit.cache
+*.log
+.DS_Store
