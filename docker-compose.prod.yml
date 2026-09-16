@@ -6,17 +6,30 @@
 # Deploy flow (run on the server, from this file's directory):
 #   docker compose -f docker-compose.prod.yml build
 #   docker compose -f docker-compose.prod.yml run --rm app php artisan migrate --force
-#   docker compose -f docker-compose.prod.yml up -d
+#   docker compose -f docker-compose.prod.yml up -d --force-recreate --no-deps app queue reverb
 #   docker compose -f docker-compose.prod.yml restart nginx
 #
-# That last restart is not optional: `up -d` only recreates the containers
-# whose image/config actually changed (app/queue/reverb on every real
-# deploy), and correctly leaves nginx alone since its own image never
-# changes. But nginx resolves the `app` hostname once, at its own startup —
-# it doesn't re-resolve per-request — so once `app` gets a new container
-# (and therefore a new internal IP), nginx keeps talking to the old, now-
-# dead IP until it's restarted too, and every request 502s with "Connection
-# refused" until that happens. See .github/workflows/deploy.yml.
+# Neither of the last two lines is optional, and both were found the hard
+# way (the first automated deploy "succeeded" while silently leaving the
+# old code running):
+#
+# `--force-recreate` on app/queue/reverb: plain `up -d` decides whether to
+# recreate a container by comparing a config hash, and for a service that's
+# only ever referenced by a stable `image:` tag (queue/reverb) rather than
+# its own `build:`, that comparison can consider the tag string unchanged
+# and skip recreating it — even though `build` just pointed the tag at a
+# brand new image. This was confirmed to work fine when run interactively
+# but NOT when driven by a non-interactive SSH script (the exact way the
+# GitHub Actions workflow runs it), so don't trust interactive testing
+# alone here — force it explicitly instead of relying on that detection.
+# `--no-deps` keeps this scoped to just those three (nginx is handled next).
+#
+# `restart nginx`: nginx's own image never changes, so it's correctly left
+# out of the recreate above — but it resolves the `app` hostname once, at
+# its own startup, not per-request. Once `app` gets a new container (and
+# therefore a new internal IP), nginx keeps talking to the old, now-dead
+# IP until it's restarted too, and every request 502s with "Connection
+# refused" until that happens.
 name: rtm
 
 services:
