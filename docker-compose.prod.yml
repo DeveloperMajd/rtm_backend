@@ -5,24 +5,32 @@
 #
 # Deploy flow (run on the server, from this file's directory):
 #   docker compose -f docker-compose.prod.yml build
-#   docker compose -f docker-compose.prod.yml run --rm app php artisan migrate --force
+#   docker compose -f docker-compose.prod.yml run --rm -T app php artisan migrate --force < /dev/null
 #   docker compose -f docker-compose.prod.yml up -d --force-recreate --no-deps app queue reverb
 #   docker compose -f docker-compose.prod.yml restart nginx
 #
-# Neither of the last two lines is optional, and both were found the hard
-# way (the first automated deploy "succeeded" while silently leaving the
-# old code running):
+# None of the flags above are decorative — the first two automated deploys
+# both "succeeded" while silently leaving the old code running, and every
+# one of these was found chasing that down:
 #
-# `--force-recreate` on app/queue/reverb: plain `up -d` decides whether to
-# recreate a container by comparing a config hash, and for a service that's
-# only ever referenced by a stable `image:` tag (queue/reverb) rather than
-# its own `build:`, that comparison can consider the tag string unchanged
-# and skip recreating it — even though `build` just pointed the tag at a
-# brand new image. This was confirmed to work fine when run interactively
-# but NOT when driven by a non-interactive SSH script (the exact way the
-# GitHub Actions workflow runs it), so don't trust interactive testing
-# alone here — force it explicitly instead of relying on that detection.
-# `--no-deps` keeps this scoped to just those three (nginx is handled next).
+# `-T ... < /dev/null` on `run`: by far the real bug. `docker compose run`
+# attaches to stdin by default; when this whole deploy runs as a script fed
+# to `ssh host 'bash -s' <<HEREDOC`, that script's own stdin *is* the
+# heredoc stream. Without redirecting `run`'s stdin away from it, `run`
+# consumes the rest of that stream itself — silently truncating the script
+# right after the migrate command, before `up -d` or `restart nginx` ever
+# execute. Bash then just hits EOF, which isn't an error, so the step still
+# reports success. `-T` (no pseudo-TTY) plus `< /dev/null` (its own,
+# already-closed stdin) stops it from ever touching the outer script's
+# stream. This alone was confirmed to fully explain both prior failures —
+# the `--force-recreate` below was a plausible-looking fix for what turned
+# out to be a red herring (an interactive-only test that didn't include the
+# migrate step, so it didn't reproduce the real bug). It's kept anyway as a
+# harmless, genuinely-belt-and-suspenders guarantee that app/queue/reverb
+# always end up on the image that was just built, rather than depending on
+# `up -d`'s own change-detection being right every time.
+# `--no-deps` keeps that recreate scoped to just those three (nginx is
+# handled next, deliberately not via the same recreate).
 #
 # `restart nginx`: nginx's own image never changes, so it's correctly left
 # out of the recreate above — but it resolves the `app` hostname once, at
