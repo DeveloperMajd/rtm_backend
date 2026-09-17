@@ -1,58 +1,233 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+<div align="center">
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+# RTM Backend
 
-## About Laravel
+Laravel 13 REST API + WebSocket server for [RTM](https://rtm.developermajd.com),
+a real-time messaging app. See the [root README](https://github.com/DeveloperMajd/rtm_backend/blob/main/../README.md)
+for the project overview and architecture diagram, or the
+[frontend repo](https://github.com/DeveloperMajd/rtm_frontend) for the React client.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+**Live**: `https://api.rtm.developermajd.com` · `wss://ws.rtm.developermajd.com`
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+</div>
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Stack
 
-## Learning Laravel
+- **Laravel 13**, PHP 8.5
+- **PostgreSQL** (durable data) — hosted on [Neon](https://neon.tech) in production
+- **Redis** (sessions, cache, queue, presence/typing, Reverb's pub/sub) —
+  [Upstash](https://upstash.com) in production
+- **Laravel Reverb** — self-hosted WebSocket server (Pusher-protocol
+  compatible), not a third-party WebSocket SaaS
+- **Sanctum** — SPA cookie auth, with personal-access-token support for a
+  future non-browser client
+- **Socialite** — Google/Facebook OAuth
+- **Resend** — transactional email (password reset)
+- **Pest** — 128 tests, feature-first
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## Feature overview
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+- Direct + group conversations, replies, edit/delete (redaction, not hard
+  delete — a deleted message's reply-quotes update everywhere they appear),
+  emoji reactions
+- PostgreSQL `tsvector` full-text search across message history, weighted
+  by relevance
+- Group admin model: multiple admins, promote/demote, admin-gated
+  add/kick, a sole admin can't leave without promoting someone first
+- Left/kicked participants keep their row (not deleted) with a
+  `left_at` + `left_at_message_id` cutoff — they see history up to the
+  moment they left, frozen, with no further live updates and no way to post
+- System messages ("Alice added Bob", "You left") are real `Message` rows
+  (`type = 'system'`), so they flow through the same pagination/broadcast
+  pipeline as everything else instead of being a bolted-on client-side thing
+- Attachments via private, short-lived signed URLs — never a public bucket
+  path
+- Personal contacts (a directory you build, not "every user on the site")
+  — adding a contact creates the direct conversation immediately
+- Presence + typing indicators, entirely Redis-backed — this state never
+  touches Postgres
+- Password policy (`Password::defaults()`) with a HaveIBeenPwned check in
+  production only (never in tests/CI, which have no network access), plus
+  a full forgot/reset-password flow
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+## API reference
 
-## Agentic Development
+All routes are under `/api`. Everything except `auth/*` requires a Sanctum
+session (`auth:sanctum` + the `web` middleware group, so CSRF/cookie rules
+apply — see [Local setup](#local-setup)).
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+<details>
+<summary><strong>Auth</strong></summary>
+
+| Method | Endpoint | Notes |
+|---|---|---|
+| POST | `/auth/register` | throttled 5/min |
+| POST | `/auth/login` | throttled 5/min |
+| POST | `/auth/logout` | |
+| GET | `/auth/me` | |
+| GET | `/auth/{google\|facebook}/redirect` | throttled 10/min |
+| GET | `/auth/{google\|facebook}/callback` | throttled 10/min |
+| POST | `/auth/forgot-password` | throttled 5/min |
+| POST | `/auth/reset-password` | throttled 5/min |
+
+</details>
+
+<details>
+<summary><strong>Conversations</strong></summary>
+
+| Method | Endpoint | Notes |
+|---|---|---|
+| GET | `/conversations` | |
+| POST | `/conversations` | throttled 10/min |
+| GET | `/conversations/{id}` | |
+| PATCH | `/conversations/{id}` | rename a group; throttled 20/min |
+| POST | `/conversations/{id}/typing` | throttled 30/min |
+| POST | `/conversations/{id}/read` | throttled 30/min |
+
+</details>
+
+<details>
+<summary><strong>Messages, attachments, reactions</strong></summary>
+
+| Method | Endpoint | Notes |
+|---|---|---|
+| GET | `/conversations/{id}/messages` | paginated |
+| POST | `/messages` | throttled 30/min |
+| GET | `/messages/search` | throttled 30/min |
+| PATCH | `/messages/{id}` | throttled 30/min |
+| DELETE | `/messages/{id}` | redacts, doesn't hard-delete; throttled 30/min |
+| POST | `/attachments` | throttled 30/min |
+| GET | `/attachments/{id}` | resolves a signed URL |
+| POST | `/messages/{id}/reactions` | throttled 60/min |
+| DELETE | `/messages/{id}/reactions/{reaction}` | throttled 60/min |
+
+</details>
+
+<details>
+<summary><strong>Group participants</strong></summary>
+
+| Method | Endpoint | Notes |
+|---|---|---|
+| GET | `/conversations/{id}/participants` | |
+| POST | `/conversations/{id}/participants` | add a member; admin-only; throttled 20/min |
+| PATCH | `/conversations/{id}/participants/{user}` | promote/demote; admin-only; throttled 20/min |
+| DELETE | `/conversations/{id}/participants/{user}` | leave; blocked for a sole admin with other members present |
+| DELETE | `/conversations/{id}/participants/{user}/kick` | admin-only; throttled 20/min |
+
+</details>
+
+<details>
+<summary><strong>Contacts, profile, presence</strong></summary>
+
+| Method | Endpoint | Notes |
+|---|---|---|
+| GET | `/contacts` | |
+| GET | `/contacts/search` | throttled 20/min |
+| POST | `/contacts` | creates contact + direct conversation; throttled 20/min |
+| DELETE | `/contacts/{user}` | |
+| GET | `/profile` | |
+| PATCH | `/profile` | |
+| PATCH | `/profile/password` | throttled 5/min |
+| POST | `/profile/avatar` | throttled 10/min |
+| DELETE | `/profile/avatar` | |
+| POST | `/presence/heartbeat` | throttled 20/min |
+| POST | `/presence/leave` | |
+
+</details>
+
+## Local setup
+
+Requires Docker (for [Sail](https://laravel.com/docs/sail)) and PHP/Composer
+on the host for the CLI commands.
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+composer run setup   # composer install, .env, key:generate, migrate, npm i (for boost.json only — no frontend build here)
+composer run dev      # Sail up, queue listener, Reverb, and log tailing in one terminal
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Or step by step:
 
-## Contributing
+```bash
+cp .env.example .env
+composer install
+./vendor/bin/sail up -d
+./vendor/bin/sail artisan key:generate
+./vendor/bin/sail artisan migrate
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+The default `.env.example` uses `MAIL_MAILER=log` (writes to
+`storage/logs/laravel.log`, delivers nowhere) so a fresh clone needs zero
+mail-provider setup. To actually test the forgot-password flow locally,
+sign up at [resend.com](https://resend.com) and set `MAIL_MAILER=resend` +
+`RESEND_API_KEY` — see the comments in `.env.example`.
 
-## Code of Conduct
+### Testing
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+./vendor/bin/sail artisan test          # full suite (128 tests)
+./vendor/bin/sail artisan pint --test   # style check
+vendor/bin/pest --filter="test name"    # a single test
+```
 
-## Security Vulnerabilities
+## Deployment
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Not deployed to a PaaS — this runs on a single **Oracle Cloud "Always
+Free"** ARM VM via Docker Compose, chosen deliberately: Fly.io's free tier
+no longer exists, and a small VM that can host *this project plus future
+ones* side by side (one shared reverse proxy, one box) is a better fit for
+a portfolio with more than one non-commercial app than paying per-project
+PaaS pricing for each.
+
+**Stack on the VM:**
+- `docker-compose.prod.yml` — four containers built from one `Dockerfile`
+  (PHP 8.5-FPM + the extensions Postgres/Redis/etc. need): the app itself,
+  a queue worker, Reverb, and nginx in front of PHP-FPM
+- A separate, shared **Caddy** container (not part of this repo — it's
+  infra shared with other projects on the same box) terminates TLS and
+  reverse-proxies by subdomain
+- **Neon** (Postgres) and **Upstash** (Redis) instead of running either as
+  a container — keeps the VM's limited RAM for compute, and offloads
+  backups/scaling to a managed service
+
+**CI/CD**: `.github/workflows/deploy.yml` — push to `main` triggers an SSH
+deploy that rebuilds, runs migrations, and restarts the stack. Getting this
+right took three iterations; the second and third fixed real bugs in the
+deploy script itself, not the app:
+
+1. The first automated deploy reported success but silently kept the *old*
+   code running. Root cause: `docker compose run` (used for
+   `php artisan migrate --force`) attaches to stdin by default — and since
+   the whole deploy script is fed to `ssh host 'bash -s' <<HEREDOC`, its own
+   stdin *is* that heredoc stream. Without redirecting `run`'s stdin away
+   from it, `run` consumed the rest of the script itself, cutting execution
+   off right after the migrate step — before `up -d` or the nginx restart
+   ever ran. Bash hitting EOF isn't an error, so the step kept reporting
+   green.
+2. Fixed with `-T --no-TTY` plus `< /dev/null` on that line, confirmed by
+   direct reproduction, then documented in `docker-compose.prod.yml`'s own
+   comment so it doesn't get "simplified" away later.
+3. Along the way, `up -d` also needed `--force-recreate` on the three
+   containers built from the shared image: a service referenced only by a
+   stable `image:` tag (not its own `build:`) can have its "does this need
+   recreating" check see the tag string as unchanged even though `build`
+   just pointed it at a new image underneath.
+
+See `docker-compose.prod.yml`'s header comment for the full reasoning —
+kept there deliberately, not just in this README, since that's what
+someone debugging a future deploy will actually be looking at.
+
+### Environment reference
+
+`.env.production.example` documents every production variable. The
+notable ones that differ from local dev:
+
+| Variable | Why |
+|---|---|
+| `DB_URL` | Neon's **direct** (non-pooled) connection string — this app's connection count is small and bounded (a handful of PHP-FPM workers + one queue worker + Reverb), nowhere near where PgBouncer pooling starts to matter, and migrations need the direct string regardless |
+| `REDIS_CACHE_DB=0` | Upstash only supports logical database 0 (no `SELECT` to another index) — the app's default config splits cache into DB 1, which would error against Upstash. Key-prefixing (already configured) keeps cache/default keys apart instead |
+| `SESSION_DOMAIN=.rtm.developermajd.com` | shared parent of the frontend and this API — required for the Sanctum session cookie to actually be sent on cross-subdomain requests |
+| `REVERB_SERVER_HOST` / `REVERB_SERVER_PORT` vs `REVERB_HOST` / `REVERB_PORT` / `REVERB_SCHEME` | the former is what the process binds to *inside* its container (`0.0.0.0:8080`); the latter is what the outside world (via Caddy) actually connects to (`ws.rtm.developermajd.com:443` over `https`) |
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+MIT — see `LICENSE`.
