@@ -216,6 +216,27 @@ See `docker-compose.prod.yml`'s header comment for the full reasoning —
 kept there deliberately, not just in this README, since that's what
 someone debugging a future deploy will actually be looking at.
 
+### Incident: Upstash free-tier quota exhausted mid-development
+
+A real production outage, not a hypothetical: Upstash's free tier caps at
+500K Redis commands/month, and development/testing traffic alone (every
+login, page load, and WebSocket reconnect touches Redis at least twice for
+session read/write) burned through it before any real user did. Upstash
+then rejected the connection outright (`RedisException: AUTH failed while
+reconnecting`) — since sessions, cache, and the rate limiter all ran on
+Redis, this broke login, every authenticated route, and anything
+rate-limited, immediately.
+
+Fixed by moving `SESSION_DRIVER`, `CACHE_STORE`, and `QUEUE_CONNECTION` to
+`database` (Neon) instead — no new migration needed, since Laravel's
+default starter migration already creates the `sessions`/`cache`/`jobs`
+tables up front, whether or not you end up using them. Redis stays
+configured and is still used directly by `PresenceService` for presence/
+typing (deliberately, not through Laravel's cache abstraction), so that one
+feature — not the whole app — is what actually depends on Upstash being up.
+See `.env.production.example`'s comment above `SESSION_DRIVER` for the
+full reasoning.
+
 ### Environment reference
 
 `.env.production.example` documents every production variable. The
@@ -224,7 +245,7 @@ notable ones that differ from local dev:
 | Variable | Why |
 |---|---|
 | `DB_URL` | Neon's **direct** (non-pooled) connection string — this app's connection count is small and bounded (a handful of PHP-FPM workers + one queue worker + Reverb), nowhere near where PgBouncer pooling starts to matter, and migrations need the direct string regardless |
-| `REDIS_CACHE_DB=0` | Upstash only supports logical database 0 (no `SELECT` to another index) — the app's default config splits cache into DB 1, which would error against Upstash. Key-prefixing (already configured) keeps cache/default keys apart instead |
+| `SESSION_DRIVER` / `CACHE_STORE` / `QUEUE_CONNECTION` = `database` | see the incident above — these ran on `redis` until Upstash's free-tier quota got exhausted |
 | `SESSION_DOMAIN=.rtm.developermajd.com` | shared parent of the frontend and this API — required for the Sanctum session cookie to actually be sent on cross-subdomain requests |
 | `REVERB_SERVER_HOST` / `REVERB_SERVER_PORT` vs `REVERB_HOST` / `REVERB_PORT` / `REVERB_SCHEME` | the former is what the process binds to *inside* its container (`0.0.0.0:8080`); the latter is what the outside world (via Caddy) actually connects to (`ws.rtm.developermajd.com:443` over `https`) |
 

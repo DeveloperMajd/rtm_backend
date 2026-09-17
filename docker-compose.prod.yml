@@ -75,7 +75,9 @@ services:
     container_name: rtm-queue
     restart: unless-stopped
     env_file: ./.env
-    command: ["php", "artisan", "queue:work", "redis", "--sleep=1", "--tries=3", "--max-time=3600"]
+    # "database", not "redis": see .env.production.example's note on
+    # SESSION_DRIVER/CACHE_STORE/QUEUE_CONNECTION for why.
+    command: ["php", "artisan", "queue:work", "database", "--sleep=1", "--tries=3", "--max-time=3600"]
     volumes:
       - storage-app:/var/www/html/storage/app
     networks:
