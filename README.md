@@ -21,9 +21,9 @@ for the project overview and architecture diagram, or the
   compatible), not a third-party WebSocket SaaS
 - **Sanctum** — SPA cookie auth, with personal-access-token support for a
   future non-browser client
-- **Socialite** — Google/Facebook OAuth
+- **Socialite** — Google OAuth
 - **Resend** — transactional email (password reset)
-- **Pest** — 128 tests, feature-first
+- **Pest** — 127 tests, feature-first
 
 ## Feature overview
 
@@ -65,8 +65,8 @@ apply — see [Local setup](#local-setup)).
 | POST | `/auth/login` | throttled 5/min |
 | POST | `/auth/logout` | |
 | GET | `/auth/me` | |
-| GET | `/auth/{google\|facebook}/redirect` | throttled 10/min |
-| GET | `/auth/{google\|facebook}/callback` | throttled 10/min |
+| GET | `/auth/google/redirect` | throttled 10/min |
+| GET | `/auth/google/callback` | throttled 10/min |
 | POST | `/auth/forgot-password` | throttled 5/min |
 | POST | `/auth/reset-password` | throttled 5/min |
 

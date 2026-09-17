@@ -23,7 +23,7 @@ Route::prefix('auth')->middleware('web')->group(function () {
         });
     });
 
-    Route::controller(SocialAuthController::class)->where(['provider' => 'google|facebook'])->group(function () {
+    Route::controller(SocialAuthController::class)->where(['provider' => 'google'])->group(function () {
         Route::get('/{provider}/redirect', 'redirect')->middleware('throttle:10,1');
         Route::get('/{provider}/callback', 'callback')->middleware('throttle:10,1');
     });

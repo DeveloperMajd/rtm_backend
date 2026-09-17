@@ -14,10 +14,10 @@ it('redirects to the provider for a supported driver', function (string $provide
     $response = $this->get("/api/auth/{$provider}/redirect");
 
     $response->assertRedirect("https://socialite.fake/{$provider}/authorize");
-})->with(['google', 'facebook']);
+})->with(['google']);
 
 it('returns 404 for an unsupported provider', function (string $action) {
-    $this->get("/api/auth/twitter/{$action}")->assertNotFound();
+    $this->get("/api/auth/facebook/{$action}")->assertNotFound();
 })->with(['redirect', 'callback']);
 
 it('creates a new user and links the provider identity on first login', function () {
