@@ -31,6 +31,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Default Disk vs. Avatar Disk — why two separate R2 buckets
+    |--------------------------------------------------------------------------
+    |
+    | R2 public access is a bucket-wide switch, not per-prefix — enabling it
+    | for avatars would also make attachment objects fetchable by anyone who
+    | has/guesses their path, undermining the "attachments are never on a
+    | public bucket path" guarantee. So in production FILESYSTEM_DISK points
+    | at the "r2" disk below (a second, private bucket — no AWS_URL, access
+    | only ever via presigned temporaryUrl()), while AVATAR_DISK points at
+    | "s3" (the public-access bucket). Same R2 account/credentials/endpoint,
+    | different bucket name.
+    |
+    */
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |
@@ -68,6 +84,22 @@ return [
             'region' => env('AWS_DEFAULT_REGION'),
             'bucket' => env('AWS_BUCKET'),
             'url' => env('AWS_URL'),
+            'endpoint' => env('AWS_ENDPOINT'),
+            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            'throw' => false,
+            'report' => false,
+        ],
+
+        // Attachments' bucket — same R2 account/token as "s3" above, but a
+        // separate, non-public bucket. No "url" key: never used to build a
+        // direct link, only ever through Attachment::temporaryUrl()'s
+        // presigned GET, which works against a private bucket regardless.
+        'r2' => [
+            'driver' => 's3',
+            'key' => env('AWS_ACCESS_KEY_ID'),
+            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'region' => env('AWS_DEFAULT_REGION'),
+            'bucket' => env('R2_ATTACHMENTS_BUCKET'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
             'throw' => false,
