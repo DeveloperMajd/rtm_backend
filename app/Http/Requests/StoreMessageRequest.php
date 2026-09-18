@@ -15,7 +15,7 @@ class StoreMessageRequest extends FormRequest
     {
         $conversation = Conversation::find($this->input('conversation_id'));
 
-        if (! $conversation) {
+        if (! $conversation || $conversation->deleted_at) {
             return false;
         }
 

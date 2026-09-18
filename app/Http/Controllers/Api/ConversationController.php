@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\ConversationDeleted;
 use App\Events\TypingIndicator;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreConversationRequest;
@@ -22,15 +23,22 @@ class ConversationController extends Controller
 {
     public function index(Request $request): AnonymousResourceCollection
     {
-        $conversations = Conversation::whereHas('participants', function ($query) use ($request): void {
-            $query->where('user_id', $request->user()->id);
-        })->with(['lastMessage.sender', 'participants.user'])->get();
+        $userId = $request->user()->id;
+
+        $conversations = Conversation::visible()
+            ->whereHas('participants', fn ($query) => $query->where('user_id', $userId))
+            ->with(['lastMessage.sender', 'participants.user'])
+            ->get();
 
         return ConversationResource::collection($conversations);
     }
 
     public function show(Request $request, Conversation $conversation): ConversationResource|JsonResponse
     {
+        if ($conversation->deleted_at) {
+            return response()->json(['data' => ['message' => 'Conversation not found']], 404);
+        }
+
         $isParticipant = $conversation->participants()->where('user_id', $request->user()->id)->exists();
 
         if (! $isParticipant) {
@@ -40,6 +48,25 @@ class ConversationController extends Controller
         $conversation->load('participants.user');
 
         return new ConversationResource($conversation);
+    }
+
+    /**
+     * Admin-only: deletes a group for every member. Not supported for
+     * direct conversations (see ConversationPolicy::delete()).
+     */
+    public function destroy(
+        Request $request,
+        Conversation $conversation,
+        ConversationService $conversations,
+    ): Response|JsonResponse {
+        if (! $request->user()->can('delete', $conversation)) {
+            return response()->json(['data' => ['message' => 'Forbidden']], 403);
+        }
+
+        $conversations->deleteGroup($conversation);
+        broadcast(new ConversationDeleted($conversation));
+
+        return response()->noContent();
     }
 
     public function store(

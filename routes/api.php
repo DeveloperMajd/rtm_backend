@@ -40,6 +40,7 @@ Route::middleware(['web', 'auth:sanctum'])->group(function () {
         Route::post('/', 'store')->middleware('throttle:10,1');
         Route::get('/{conversation}', 'show');
         Route::patch('/{conversation}', 'update')->middleware('throttle:20,1');
+        Route::delete('/{conversation}', 'destroy')->middleware('throttle:10,1');
         Route::post('/{conversation}/typing', 'typing')->middleware('throttle:30,1');
         Route::post('/{conversation}/read', 'markAsRead')->middleware('throttle:30,1');
     });

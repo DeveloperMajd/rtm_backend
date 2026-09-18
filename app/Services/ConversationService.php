@@ -41,4 +41,14 @@ class ConversationService
             return $conversation;
         });
     }
+
+    /**
+     * Delete a group for every member. Soft — the row stays, per this
+     * project's tombstone-column convention — but becomes invisible and
+     * inaccessible to everyone, not just the admin who deleted it.
+     */
+    public function deleteGroup(Conversation $conversation): void
+    {
+        $conversation->forceFill(['deleted_at' => now()])->save();
+    }
 }

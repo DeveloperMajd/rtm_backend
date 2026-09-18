@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -32,7 +33,18 @@ class Conversation extends Model
         return [
             'last_message_at' => 'datetime',
             'metadata' => 'array',
+            'deleted_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Groups an admin has deleted. Direct conversations can't be deleted
+     * (see ConversationPolicy::delete()), so deleted_at is always null for
+     * them.
+     */
+    public function scopeVisible(Builder $query): Builder
+    {
+        return $query->whereNull('deleted_at');
     }
 
     // Relationships

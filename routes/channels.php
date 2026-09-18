@@ -11,7 +11,7 @@ Broadcast::channel('App.Models.User.{id}', function (User $user, string $id): bo
 Broadcast::channel('conversation.{conversationId}', function (User $user, string $conversationId): bool {
     $conversation = Conversation::find($conversationId);
 
-    if (! $conversation) {
+    if (! $conversation || $conversation->deleted_at) {
         return false;
     }
 

@@ -74,6 +74,22 @@ class ConversationPolicy
         return $this->addParticipant($user, $conversation);
     }
 
+    /**
+     * Determine whether the user can delete the conversation. Groups only,
+     * admin-only — deleting a direct conversation isn't supported (a
+     * per-viewer "hide" was tried and reverted; it broke re-opening a
+     * conversation from the contacts list, since that flow depends on the
+     * conversation staying in the cached list it was just filtered out of).
+     */
+    public function delete(User $user, Conversation $conversation): bool
+    {
+        if ($conversation->type !== 'group') {
+            return false;
+        }
+
+        return $this->isActiveAdmin($user, $conversation);
+    }
+
     private function isActiveAdmin(User $user, Conversation $conversation): bool
     {
         return $conversation->participants()
