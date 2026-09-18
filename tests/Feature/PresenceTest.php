@@ -69,3 +69,30 @@ test('the contact directory search surfaces is_online per user', function () {
     expect($data->firstWhere('id', $online->id)['is_online'])->toBeTrue();
     expect($data->firstWhere('id', $offline->id)['is_online'])->toBeFalse();
 });
+
+test('presence degrades to offline instead of throwing when redis is unavailable', function () {
+    // Regression test: a real production incident (Upstash free-tier
+    // quota exhausted) made every Redis call throw, which took down
+    // /api/conversations entirely since ConversationResource calls
+    // PresenceService unconditionally. Presence is ephemeral/non-critical
+    // and must fail soft instead.
+    $user = User::factory()->create(['last_seen_at' => null]);
+
+    Redis::shouldReceive('connection')->andThrow(new RedisException('AUTH failed while reconnecting'));
+
+    $service = app(PresenceService::class);
+
+    expect($service->isOnline($user->id))->toBeFalse();
+    expect($service->onlineUserIds([$user->id]))->toBe([]);
+
+    $service->heartbeat($user);
+    expect($user->fresh()->last_seen_at)->not->toBeNull();
+
+    $this->actingAs($user)->postJson('/api/presence/heartbeat')->assertNoContent();
+
+    // shouldReceive() rebinds the container's 'redis' singleton, not just
+    // the facade's cached instance — both must be undone or the file's
+    // afterEach (Redis::flushdb()) hits the mock instead of a real Redis.
+    app()->forgetInstance('redis');
+    Redis::clearResolvedInstance('redis');
+});

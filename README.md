@@ -231,11 +231,25 @@ Fixed by moving `SESSION_DRIVER`, `CACHE_STORE`, and `QUEUE_CONNECTION` to
 `database` (Neon) instead — no new migration needed, since Laravel's
 default starter migration already creates the `sessions`/`cache`/`jobs`
 tables up front, whether or not you end up using them. Redis stays
-configured and is still used directly by `PresenceService` for presence/
-typing (deliberately, not through Laravel's cache abstraction), so that one
-feature — not the whole app — is what actually depends on Upstash being up.
-See `.env.production.example`'s comment above `SESSION_DRIVER` for the
-full reasoning.
+configured and is still used directly by `PresenceService` for online/
+offline presence (typing indicators broadcast straight through Reverb and
+never touch Redis at all), so that one feature — not the whole app — is
+what actually depends on Upstash being up. See
+`.env.production.example`'s comment above `SESSION_DRIVER` for the full
+reasoning.
+
+**Follow-up**: the free-tier quota was hit a second time weeks later —
+believable given how *any* command counts against it, including a 30s
+presence heartbeat per active tab — and this time it took `/api/
+conversations` down with it. `ConversationResource` calls
+`PresenceService::onlineUserIds()` unconditionally to compute each
+participant's online dot, and that call had no error handling, so a
+Redis outage 500'd every conversations-list load, not just presence
+itself. Presence is ephemeral, non-critical data by design, so it should
+degrade to "nobody online" on a Redis failure rather than take core
+messaging down with it. `PresenceService` now wraps every Redis call and
+fails soft (`RedisException` → logged as a warning, treated as offline),
+covered by a regression test in `PresenceTest.php`.
 
 ### Environment reference
 
