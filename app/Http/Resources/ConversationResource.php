@@ -86,6 +86,16 @@ class ConversationResource extends JsonResource
                         ->count();
                 },
             ),
+            // The exact message the viewer had read up to, which is what
+            // unread_count above is derived from. Exposing it lets a client
+            // put its "new messages" divider on the very message the server
+            // counted from, instead of inferring the position by counting
+            // unread_count messages backwards from the end and having to
+            // reproduce the same rules about whose messages count.
+            'last_read_message_id' => $this->when(
+                $this->relationLoaded('participants'),
+                fn () => $viewerLeftAt !== null ? null : $viewerParticipant?->last_read_message_id,
+            ),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

@@ -54,7 +54,7 @@
         "dev": [
             "Composer\\Config::disableProcessTimeout",
             "./vendor/bin/sail up -d",
-            "npx concurrently -c \"#c4b5fd,#fb7185,#86efac\" \"./vendor/bin/sail artisan queue:listen --tries=1 --timeout=0\" \"./vendor/bin/sail artisan pail --timeout=0\" \"./vendor/bin/sail artisan reverb:start\" --names=queue,logs,reverb --kill-others"
+            "npx concurrently -c \"#c4b5fd,#fb7185,#86efac\" \"./vendor/bin/sail artisan queue:work --tries=1 --timeout=0 --sleep=0.1\" \"./vendor/bin/sail artisan pail --timeout=0\" \"./vendor/bin/sail artisan reverb:start\" --names=queue,logs,reverb --kill-others"
         ],
         "test": [
             "@php artisan config:clear --ansi",

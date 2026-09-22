@@ -28,7 +28,15 @@ class MessageController extends Controller
             return response()->json(['data' => ['message' => 'Forbidden']], 403);
         }
 
-        $perPage = $request->query('per_page', 10);
+        // Keyset ("cursor") pagination, not offset. A conversation grows at
+        // the newest end while it is being read, and `?page=N` is an offset
+        // from that end — so every message that arrives shifts every page
+        // boundary down by one, and the next page a client asks for overlaps
+        // the one it already holds, handing back rows twice. Anchoring on
+        // "older than this id" instead makes a page boundary mean the same
+        // thing regardless of what has arrived since.
+        $limit = max(1, min((int) $request->query('limit', 25), 100));
+        $beforeId = $request->query('before_id');
 
         $query = $conversation->messages()
             ->with(['sender:id,name,avatar_url', 'reactions.user:id,name,avatar_url', 'replyTo.sender:id,name,avatar_url', 'attachments']);
@@ -39,14 +47,33 @@ class MessageController extends Controller
             $query->where('id', '<=', $participant->left_at_message_id);
         }
 
+        if ($beforeId !== null && $beforeId !== '') {
+            $query->where('id', '<', $beforeId);
+        }
+
         // Order by id, not created_at: ids are UUIDv7 (precisely, monotonically
         // time-ordered); the timestamp column is only second-precision, which
-        // is ambiguous whenever two messages land in the same second.
-        $messages = $query->latest('id')->paginate($perPage);
+        // is ambiguous whenever two messages land in the same second. That
+        // same property is what makes the id usable as the cursor.
+        //
+        // One row beyond the limit is fetched purely to answer "is there more
+        // history?" without a second COUNT(*) over the conversation.
+        $messages = $query->latest('id')->limit($limit + 1)->get();
 
-        $messages->setCollection($messages->getCollection()->reverse()->values());
+        $hasMore = $messages->count() > $limit;
+        $messages = $messages->take($limit);
 
-        return MessageResource::collection($messages);
+        // Newest-first while paginating (so the cursor walks backwards through
+        // history), oldest-first in the response (so it renders top to bottom).
+        $oldestInBatch = $messages->last();
+
+        return MessageResource::collection($messages->reverse()->values())
+            ->additional([
+                'meta' => [
+                    'has_more' => $hasMore,
+                    'next_before_id' => $hasMore ? $oldestInBatch?->id : null,
+                ],
+            ]);
     }
 
     public function store(StoreMessageRequest $request): JsonResponse

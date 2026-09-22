@@ -91,7 +91,7 @@ apply — see [Local setup](#local-setup)).
 
 | Method | Endpoint | Notes |
 |---|---|---|
-| GET | `/conversations/{id}/messages` | paginated |
+| GET | `/conversations/{id}/messages` | cursor-paginated: `?before_id=&limit=` (default 25, max 100); returns `meta.has_more` and `meta.next_before_id` |
 | POST | `/messages` | throttled 30/min |
 | GET | `/messages/search` | throttled 30/min |
 | PATCH | `/messages/{id}` | throttled 30/min |
