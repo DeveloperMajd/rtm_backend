@@ -184,7 +184,7 @@ test('an attachment cannot be linked to two messages', function () {
     ])->assertUnprocessable();
 });
 
-test('a participant is redirected to a download url and a non-participant is forbidden', function () {
+test('a participant downloads a local-disk attachment under its original name and a non-participant is forbidden', function () {
     [$alice, $bob, $conversation] = attachmentConversation();
     $outsider = User::factory()->create();
 
@@ -197,11 +197,40 @@ test('a participant is redirected to a download url and a non-participant is for
         'attachment_ids' => [$attachmentId],
     ])->assertCreated();
 
+    // Served directly, as a download: the local disk's signed URL can't
+    // carry a download disposition, so redirecting there would open the
+    // file inline in place of the app.
     $this->actingAs($bob)->get("/api/attachments/{$attachmentId}")
-        ->assertStatus(302);
+        ->assertOk()
+        ->assertDownload('shared.png');
 
     $this->actingAs($outsider)->get("/api/attachments/{$attachmentId}")
         ->assertForbidden();
+});
+
+test('on object storage a participant is redirected to a fresh download url', function () {
+    config(['filesystems.default' => 'r2']);
+    Storage::fake('r2');
+    Storage::disk('r2')->buildTemporaryUrlsUsing(
+        fn (string $path, $expiration, array $options) => "https://r2.test/{$path}?disposition=".urlencode($options['ResponseContentDisposition'] ?? ''),
+    );
+    [$alice, $bob, $conversation] = attachmentConversation();
+
+    $attachmentId = $this->actingAs($alice)->postJson('/api/attachments', [
+        'file' => UploadedFile::fake()->image('shared.png'),
+    ])->json('data.id');
+
+    $this->actingAs($alice)->postJson('/api/messages', [
+        'conversation_id' => $conversation->id,
+        'attachment_ids' => [$attachmentId],
+    ])->assertCreated();
+
+    $response = $this->actingAs($bob)->get("/api/attachments/{$attachmentId}");
+
+    $response->assertRedirect();
+    expect(urldecode($response->headers->get('Location')))
+        ->toStartWith('https://r2.test/attachments/')
+        ->toContain('attachment; filename="shared.png"');
 });
 
 test('a deleted message hides its attachments in the resource', function () {

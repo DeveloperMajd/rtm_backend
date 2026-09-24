@@ -11,6 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AttachmentController extends Controller
 {
@@ -42,11 +43,16 @@ class AttachmentController extends Controller
     }
 
     /**
-     * Redirect to a fresh short-lived URL, forcing a download with the
-     * original filename. Auth-checked so links can't be shared outside the
-     * conversation.
+     * Download the attachment under its original filename. Auth-checked so
+     * links can't be shared outside the conversation.
+     *
+     * On object storage (R2) this redirects to a fresh short-lived URL that
+     * carries the download disposition. Any other disk streams the file
+     * itself: only S3-compatible storage honours `ResponseContentDisposition`,
+     * and without it the local disk's signed URL serves the file inline —
+     * clicking Download would navigate away from the app to the file.
      */
-    public function show(Request $request, Attachment $attachment): RedirectResponse
+    public function show(Request $request, Attachment $attachment): RedirectResponse|StreamedResponse
     {
         $userId = $request->user()->id;
 
@@ -61,6 +67,10 @@ class AttachmentController extends Controller
 
         /** @var FilesystemAdapter $disk */
         $disk = Storage::disk($attachment->disk);
+
+        if (config("filesystems.disks.{$attachment->disk}.driver") !== 's3') {
+            return $disk->download($attachment->path, $attachment->original_name);
+        }
 
         $url = $disk->temporaryUrl(
             $attachment->path,
