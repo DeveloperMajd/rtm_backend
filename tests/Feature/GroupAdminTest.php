@@ -90,6 +90,31 @@ test('re-adding a previously kicked member reactivates their row', function () {
     expect($participant->role)->toBe('participant');
 });
 
+// The cutoff that froze their history when they were removed has to go
+// when they come back, or they rejoin a group they can't see anything in.
+test('a re-added member sees the group again, including what is said after they return', function () {
+    [$admin, $member, , $conversation] = threePersonGroup();
+
+    $this->actingAs($admin)->deleteJson("/api/conversations/{$conversation->id}/participants/{$member->id}/kick")->assertOk();
+    $this->actingAs($admin)->postJson("/api/conversations/{$conversation->id}/participants", [
+        'user_id' => $member->id,
+    ])->assertCreated();
+
+    expect(ConversationParticipant::where('conversation_id', $conversation->id)->where('user_id', $member->id)->value('left_at_message_id'))->toBeNull();
+
+    $this->actingAs($admin)->postJson('/api/messages', [
+        'conversation_id' => $conversation->id,
+        'body' => 'welcome back',
+    ])->assertCreated();
+
+    $history = $this->actingAs($member)->getJson("/api/conversations/{$conversation->id}/messages")->assertOk();
+    expect(collect($history->json('data'))->pluck('body')->last())->toBe('welcome back');
+
+    $list = $this->actingAs($member)->getJson('/api/conversations')->assertOk();
+    $row = collect($list->json('data'))->firstWhere('id', $conversation->id);
+    expect($row['latest_message']['body'])->toBe('welcome back');
+});
+
 test('an admin can promote another member to admin', function () {
     [$admin, $member, , $conversation] = threePersonGroup();
 

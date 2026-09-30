@@ -23,7 +23,17 @@ class ConversationParticipantService
         }
 
         if ($existing) {
-            $existing->update(['left_at' => null, 'role' => 'participant', 'joined_at' => now()]);
+            // The cutoff goes with left_at. Left in place, it kept a re-added
+            // member's history and list preview frozen at the moment they
+            // were removed — back in the group, but seeing none of it. They
+            // see the whole history again, including what was said while
+            // they were out: one cutoff can't describe a gap in the middle.
+            $existing->update([
+                'left_at' => null,
+                'left_at_message_id' => null,
+                'role' => 'participant',
+                'joined_at' => now(),
+            ]);
             $participant = $existing;
         } else {
             $participant = $conversation->participants()->create([
