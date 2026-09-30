@@ -220,6 +220,12 @@ class MessageController extends Controller
         return response()->noContent();
     }
 
+    /**
+     * Full-text search over the messages the viewer may read. It goes
+     * through Message::visibleTo(): a member who left finds nothing said
+     * after they left, and a deleted group finds nothing at all. (Search
+     * used to check only for a participant row, so both leaked.)
+     */
     public function search(SearchMessagesRequest $request): AnonymousResourceCollection
     {
         $query = trim((string) $request->input('q'));
@@ -233,7 +239,7 @@ class MessageController extends Controller
         $tsQuery = "(websearch_to_tsquery('simple', ?) || websearch_to_tsquery('english', ?))";
 
         $messages = Message::query()
-            ->whereHas('conversation.participants', fn ($q) => $q->where('user_id', $request->user()->id))
+            ->visibleTo($request->user())
             ->whereRaw("search_vector @@ {$tsQuery}", [$query, $query])
             ->with(['sender:id,name,avatar_url', 'conversation.participants.user'])
             ->orderByRaw("ts_rank(search_vector, {$tsQuery}) DESC", [$query, $query])
