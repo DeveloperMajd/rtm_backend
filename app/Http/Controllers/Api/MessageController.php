@@ -221,14 +221,20 @@ class MessageController extends Controller
     }
 
     /**
-     * Full-text search over the messages the viewer may read. It goes
-     * through Message::visibleTo(): a member who left finds nothing said
-     * after they left, and a deleted group finds nothing at all. (Search
-     * used to check only for a participant row, so both leaked.)
+     * Full-text search over the messages the viewer may read — everywhere
+     * (the ⌘K palette), or in one conversation with `conversation_id` (the
+     * in-chat search bar). Best match first, or newest first with
+     * `sort=recent`. Returns at most 20 results everywhere and 50 in one
+     * conversation, with `meta.total` counting every match.
+     *
+     * Every mode goes through Message::visibleTo(): a member who left finds
+     * nothing said after they left, and a deleted group finds nothing at
+     * all. (Search used to check only for a participant row, so both leaked.)
      */
-    public function search(SearchMessagesRequest $request): AnonymousResourceCollection
+    public function search(SearchMessagesRequest $request): AnonymousResourceCollection|JsonResponse
     {
         $query = trim((string) $request->input('q'));
+        $conversationId = $request->validated('conversation_id');
 
         // search_vector combines a literal representation (weight A) and a
         // stemmed one (weight B) of the message body. Matching against both
@@ -238,15 +244,43 @@ class MessageController extends Controller
         // over-stemming (e.g. "universe"/"university" both stem to 'univers').
         $tsQuery = "(websearch_to_tsquery('simple', ?) || websearch_to_tsquery('english', ?))";
 
-        $messages = Message::query()
+        $matches = Message::query()
             ->visibleTo($request->user())
-            ->whereRaw("search_vector @@ {$tsQuery}", [$query, $query])
+            ->whereRaw("search_vector @@ {$tsQuery}", [$query, $query]);
+
+        if ($conversationId !== null) {
+            $conversation = Conversation::find($conversationId);
+
+            if (! $conversation) {
+                return response()->json(['data' => ['message' => 'Conversation not found']], 404);
+            }
+
+            if ($denied = $this->denyUnlessReadable($request, $conversation)) {
+                return $denied;
+            }
+
+            $matches->where('conversation_id', $conversation->id);
+        }
+
+        // Stepping through the matches in one conversation needs more of
+        // them than the palette's shortlist of best matches does.
+        $limit = max(1, min((int) $request->query('limit', 20), $conversationId !== null ? 50 : 20));
+
+        $total = (clone $matches)->count();
+
+        if ($request->validated('sort') === 'recent') {
+            $matches->latest('id');
+        } else {
+            $matches->orderByRaw("ts_rank(search_vector, {$tsQuery}) DESC", [$query, $query])->latest('id');
+        }
+
+        $messages = $matches
             ->with(['sender:id,name,avatar_url', 'conversation.participants.user'])
-            ->orderByRaw("ts_rank(search_vector, {$tsQuery}) DESC", [$query, $query])
-            ->limit(20)
+            ->limit($limit)
             ->get();
 
-        return MessageSearchResource::collection($messages);
+        return MessageSearchResource::collection($messages)
+            ->additional(['meta' => ['total' => $total]]);
     }
 
     /**

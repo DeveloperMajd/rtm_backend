@@ -94,7 +94,7 @@ apply — see [Local setup](#local-setup)).
 | GET | `/conversations/{id}/messages` | cursor-paginated, one direction per request: `?before_id=` reads older (returns `meta.has_more`, `meta.next_before_id`), `?after_id=` reads newer (returns `meta.has_more`, `meta.next_after_id`); `limit` default 25, max 100; 404 for a deleted group |
 | GET | `/conversations/{id}/messages/{message}/context` | a window around one message, for jumping to it: `?before=&after=` (default 20, max 50 each way); returns `meta.target_id`, `has_more_before`/`has_more_after` and a cursor each way; 404 when the message is past the viewer's leave cutoff, in another conversation, or in a deleted group; throttled 60/min |
 | POST | `/messages` | throttled 30/min |
-| GET | `/messages/search` | throttled 30/min |
+| GET | `/messages/search` | Postgres full-text search: `?q=` (2–200 chars), optional `conversation_id` to search one conversation, `sort=relevance` (default) or `recent`, `limit` (max 20 everywhere, 50 in one conversation); returns `meta.total`; only messages the viewer may read (no deleted groups, nothing after they left); throttled 30/min everywhere, 60/min in one conversation |
 | PATCH | `/messages/{id}` | throttled 30/min |
 | DELETE | `/messages/{id}` | redacts, doesn't hard-delete; throttled 30/min |
 | POST | `/attachments` | throttled 30/min |

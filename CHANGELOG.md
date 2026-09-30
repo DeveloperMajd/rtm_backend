@@ -5,6 +5,33 @@ whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Search within a conversation
+
+- **New:** `GET /api/messages/search` takes an optional `conversation_id`
+  to search only that conversation.
+  - It answers 403 if the viewer isn't in the conversation.
+  - It answers 404 if the conversation doesn't exist or is a deleted group.
+- **New:** `sort=recent` returns the newest matches first. `relevance`
+  stays the default.
+- **New:** a `limit` parameter. The maximum is 20 everywhere, as before, and
+  50 within one conversation.
+- **New:** `meta.total` gives the number of matches, beyond the ones
+  returned.
+- **Changed:** search runs through `Message::visibleTo()`. It checked only
+  that the viewer had a participant row, so two things leaked (audit D1):
+  - A member who left a group could still find anything said after they
+    left.
+  - Messages from deleted groups turned up in results.
+- **Changed:** the search limit is a named limiter, `messages.search`.
+  Searching one conversation gets 60 a minute and its own counter, since
+  it re-runs as the viewer types. Searching everywhere stays at 30.
+
+**Deploy:** no migration.
+
+**Compatibility:** additive. The response still has the same `data`, now
+with `meta.total` added. The palette's existing requests get the same
+results, minus the leaked ones above.
+
 ### Jump to a message
 
 - **New:** `GET /api/conversations/{id}/messages/{message}/context?before=&after=`

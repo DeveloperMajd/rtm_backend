@@ -52,7 +52,9 @@ Route::middleware(['web', 'auth:sanctum'])->group(function () {
 
     Route::controller(MessageController::class)->group(function () {
         Route::post('/messages', 'store')->middleware('throttle:30,1,messages.store.');
-        Route::get('/messages/search', 'search')->middleware('throttle:30,1,messages.search.');
+        // A named limiter: 30/min everywhere, 60/min within one conversation,
+        // each with its own counter (see AppServiceProvider).
+        Route::get('/messages/search', 'search')->middleware('throttle:messages.search');
         Route::patch('/messages/{message}', 'update')->middleware('throttle:30,1,messages.update.');
         Route::delete('/messages/{message}', 'destroy')->middleware('throttle:30,1,messages.destroy.');
         Route::get('/conversations/{conversation}/messages', 'index');

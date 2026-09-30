@@ -145,9 +145,83 @@ function searchMessagesIn(Conversation $conversation, User $sender, array $bodie
     ]), $bodies);
 }
 
+function joinAs(Conversation $conversation, User $user): void
+{
+    ConversationParticipant::create([
+        'conversation_id' => $conversation->id,
+        'user_id' => $user->id,
+        'role' => 'participant',
+        'joined_at' => now(),
+    ]);
+}
+
+test('a search can be narrowed to one conversation, and says how many matches there are in all', function () {
+    [$alice, $bob, $team] = searchGroup('Team');
+    [, , $other] = searchGroup('Other');
+    joinAs($other, $alice);
+
+    searchMessagesIn($team, $bob, ['deploy on friday', 'the deploy went fine']);
+    searchMessagesIn($other, $bob, ['another deploy elsewhere']);
+
+    $response = $this->actingAs($alice)
+        ->getJson("/api/messages/search?q=deploy&conversation_id={$team->id}")
+        ->assertOk();
+
+    expect(collect($response->json('data'))->pluck('conversation_id')->unique()->all())->toBe([$team->id]);
+    expect($response->json('meta.total'))->toBe(2);
+
+    $everywhere = $this->actingAs($alice)->getJson('/api/messages/search?q=deploy')->assertOk();
+    expect($everywhere->json('meta.total'))->toBe(3);
+});
+
+test('results can come newest first instead of best match first', function () {
+    [$alice, $bob, $team] = searchGroup();
+    $messages = searchMessagesIn($team, $bob, ['redis redis redis', 'redis once', 'redis again later']);
+
+    $recent = $this->actingAs($alice)
+        ->getJson("/api/messages/search?q=redis&conversation_id={$team->id}&sort=recent")
+        ->assertOk();
+
+    expect(collect($recent->json('data'))->pluck('id')->all())
+        ->toBe([$messages[2]->id, $messages[1]->id, $messages[0]->id]);
+
+    $this->actingAs($alice)->getJson('/api/messages/search?q=redis&sort=oldest')->assertUnprocessable();
+});
+
+test('one conversation returns up to fifty matches, everywhere up to twenty, and the total counts them all', function () {
+    [$alice, $bob, $team] = searchGroup();
+    searchMessagesIn($team, $bob, array_fill(0, 60, 'the quarterly numbers'));
+
+    $scoped = $this->actingAs($alice)
+        ->getJson("/api/messages/search?q=quarterly&conversation_id={$team->id}&limit=500")
+        ->assertOk();
+    expect($scoped->json('data'))->toHaveCount(50);
+    expect($scoped->json('meta.total'))->toBe(60);
+
+    $everywhere = $this->actingAs($alice)->getJson('/api/messages/search?q=quarterly&limit=500')->assertOk();
+    expect($everywhere->json('data'))->toHaveCount(20);
+    expect($everywhere->json('meta.total'))->toBe(60);
+});
+
+test('only a conversation the viewer is in can be searched', function () {
+    [, $bob, $team] = searchGroup();
+    searchMessagesIn($team, $bob, ['private plans']);
+    $stranger = User::factory()->create();
+
+    $this->actingAs($stranger)
+        ->getJson("/api/messages/search?q=plans&conversation_id={$team->id}")
+        ->assertForbidden();
+    $this->actingAs($stranger)
+        ->getJson('/api/messages/search?q=plans&conversation_id=01a0c996-0000-7000-8000-000000000000')
+        ->assertNotFound();
+    $this->actingAs($stranger)
+        ->getJson('/api/messages/search?q=plans&conversation_id=not-a-uuid')
+        ->assertUnprocessable();
+});
+
 // D1 in the Phase 2 audit: search checked only for a participant row, so a
 // member who left could still find everything said after they left.
-test('a member who left finds nothing said after they left', function () {
+test('a member who left finds nothing said after they left, everywhere or in the group', function () {
     [$alice, $bob, $team] = searchGroup();
     $before = searchMessagesIn($team, $bob, ['budget draft one']);
 
@@ -157,8 +231,14 @@ test('a member who left finds nothing said after they left', function () {
 
     searchMessagesIn($team, $bob, ['budget draft two']);
 
-    $response = $this->actingAs($alice)->getJson('/api/messages/search?q=budget')->assertOk();
-    expect(collect($response->json('data'))->pluck('body')->all())->toBe(['budget draft one']);
+    $everywhere = $this->actingAs($alice)->getJson('/api/messages/search?q=budget')->assertOk();
+    expect(collect($everywhere->json('data'))->pluck('body')->all())->toBe(['budget draft one']);
+
+    $scoped = $this->actingAs($alice)
+        ->getJson("/api/messages/search?q=budget&conversation_id={$team->id}")
+        ->assertOk();
+    expect(collect($scoped->json('data'))->pluck('body')->all())->toBe(['budget draft one']);
+    expect($scoped->json('meta.total'))->toBe(1);
 });
 
 test('a deleted group turns up in no search', function () {
@@ -166,6 +246,27 @@ test('a deleted group turns up in no search', function () {
     searchMessagesIn($team, $bob, ['launch checklist']);
     $team->forceFill(['deleted_at' => now()])->save();
 
-    $response = $this->actingAs($alice)->getJson('/api/messages/search?q=launch')->assertOk();
-    expect($response->json('data'))->toBe([]);
+    $everywhere = $this->actingAs($alice)->getJson('/api/messages/search?q=launch')->assertOk();
+    expect($everywhere->json('data'))->toBe([]);
+
+    $this->actingAs($alice)
+        ->getJson("/api/messages/search?q=launch&conversation_id={$team->id}")
+        ->assertNotFound();
+});
+
+test('searching one conversation has its own, larger allowance', function () {
+    [$alice, $bob, $team] = searchGroup();
+    searchMessagesIn($team, $bob, ['hello there']);
+
+    for ($i = 0; $i < 30; $i++) {
+        $this->actingAs($alice)->getJson('/api/messages/search?q=hello')->assertOk();
+    }
+    $this->actingAs($alice)->getJson('/api/messages/search?q=hello')->assertTooManyRequests();
+
+    for ($i = 0; $i < 60; $i++) {
+        $this->actingAs($alice)->getJson("/api/messages/search?q=hello&conversation_id={$team->id}")->assertOk();
+    }
+    $this->actingAs($alice)
+        ->getJson("/api/messages/search?q=hello&conversation_id={$team->id}")
+        ->assertTooManyRequests();
 });
