@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Events\MessageSent;
 use App\Events\MessageUpdated;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\MessageContextRequest;
+use App\Http\Requests\MessageHistoryRequest;
 use App\Http\Requests\SearchMessagesRequest;
 use App\Http\Requests\StoreMessageRequest;
 use App\Http\Requests\UpdateMessageRequest;
@@ -13,6 +15,7 @@ use App\Http\Resources\MessageSearchResource;
 use App\Models\Attachment;
 use App\Models\Conversation;
 use App\Models\Message;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -20,12 +23,10 @@ use Illuminate\Http\Response;
 
 class MessageController extends Controller
 {
-    public function index(Request $request, Conversation $conversation): AnonymousResourceCollection|JsonResponse
+    public function index(MessageHistoryRequest $request, Conversation $conversation): AnonymousResourceCollection|JsonResponse
     {
-        $participant = $conversation->participants()->where('user_id', $request->user()->id)->first();
-
-        if (! $participant) {
-            return response()->json(['data' => ['message' => 'Forbidden']], 403);
+        if ($denied = $this->denyUnlessReadable($request, $conversation)) {
+            return $denied;
         }
 
         // Keyset ("cursor") pagination, not offset. A conversation grows at
@@ -36,18 +37,34 @@ class MessageController extends Controller
         // "older than this id" instead makes a page boundary mean the same
         // thing regardless of what has arrived since.
         $limit = max(1, min((int) $request->query('limit', 25), 100));
-        $beforeId = $request->query('before_id');
-
-        $query = $conversation->messages()
-            ->with(['sender:id,name,avatar_url', 'reactions.user:id,name,avatar_url', 'replyTo.sender:id,name,avatar_url', 'attachments']);
+        $beforeId = $request->validated('before_id');
+        $afterId = $request->validated('after_id');
 
         // A member who has left (or been removed) sees history frozen at the
         // moment they left — no new messages, per the read-only group rule.
-        if ($participant->left_at_message_id !== null) {
-            $query->where('id', '<=', $participant->left_at_message_id);
+        $query = $this->readableMessages($request, $conversation);
+
+        // Reading forwards from a message, towards the newest: how a client
+        // that opened somewhere in the middle of the history (a jump to a
+        // reply's original, or a search result) catches back up. Same
+        // cursor rule in the other direction; `has_more` then means "more
+        // newer messages", and the cursor to continue from is next_after_id.
+        if ($afterId !== null) {
+            $messages = $query->where('id', '>', $afterId)->oldest('id')->limit($limit + 1)->get();
+
+            $hasMore = $messages->count() > $limit;
+            $messages = $messages->take($limit);
+
+            return MessageResource::collection($messages->values())
+                ->additional([
+                    'meta' => [
+                        'has_more' => $hasMore,
+                        'next_after_id' => $hasMore ? $messages->last()?->id : null,
+                    ],
+                ]);
         }
 
-        if ($beforeId !== null && $beforeId !== '') {
+        if ($beforeId !== null) {
             $query->where('id', '<', $beforeId);
         }
 
@@ -72,6 +89,60 @@ class MessageController extends Controller
                 'meta' => [
                     'has_more' => $hasMore,
                     'next_before_id' => $hasMore ? $oldestInBatch?->id : null,
+                ],
+            ]);
+    }
+
+    /**
+     * A window of history around one message — what a client needs to jump
+     * to a message that isn't loaded yet (a reply's original, a search
+     * result, a link). Returns up to `before` messages older than it, the
+     * message itself and up to `after` newer, oldest first, with a cursor
+     * for each direction so the client can keep reading either way through
+     * the ordinary history endpoint.
+     *
+     * 403 for someone who isn't in the conversation; 404 when the message
+     * isn't in it, falls after the viewer left, or the group was deleted. A
+     * deleted message is still returned, as the same "deleted" placeholder
+     * the history shows, so a jump to one lands somewhere.
+     */
+    public function context(MessageContextRequest $request, Conversation $conversation, Message $message): AnonymousResourceCollection|JsonResponse
+    {
+        if ($denied = $this->denyUnlessReadable($request, $conversation)) {
+            return $denied;
+        }
+
+        $readable = $this->readableMessages($request, $conversation);
+
+        if ($message->conversation_id !== $conversation->id || ! (clone $readable)->whereKey($message->id)->exists()) {
+            return response()->json(['data' => ['message' => 'Message not found']], 404);
+        }
+
+        $beforeCount = max(0, min((int) $request->validated('before', 20), 50));
+        $afterCount = max(0, min((int) $request->validated('after', 20), 50));
+
+        // One row beyond each count answers "is there more that way?", as in
+        // index(). The target itself comes from the same query, so it carries
+        // the same relations as its neighbours.
+        $older = (clone $readable)->where('id', '<', $message->id)->latest('id')->limit($beforeCount + 1)->get();
+        $newer = (clone $readable)->where('id', '>', $message->id)->oldest('id')->limit($afterCount + 1)->get();
+        $target = (clone $readable)->whereKey($message->id)->get();
+
+        $hasMoreBefore = $older->count() > $beforeCount;
+        $hasMoreAfter = $newer->count() > $afterCount;
+        $older = $older->take($beforeCount)->reverse();
+        $newer = $newer->take($afterCount);
+
+        $window = $older->concat($target)->concat($newer)->values();
+
+        return MessageResource::collection($window)
+            ->additional([
+                'meta' => [
+                    'target_id' => $message->id,
+                    'has_more_before' => $hasMoreBefore,
+                    'has_more_after' => $hasMoreAfter,
+                    'next_before_id' => $hasMoreBefore ? $window->first()->id : null,
+                    'next_after_id' => $hasMoreAfter ? $window->last()->id : null,
                 ],
             ]);
     }
@@ -170,5 +241,37 @@ class MessageController extends Controller
             ->get();
 
         return MessageSearchResource::collection($messages);
+    }
+
+    /**
+     * The history endpoints' shared gate, in the same order and shape as
+     * ConversationController::show(): a deleted group is gone for everyone
+     * (404), and someone who was never in the conversation gets 403. A
+     * member who left passes — they keep read access to the history up to
+     * the moment they left, which readableMessages() enforces.
+     */
+    private function denyUnlessReadable(Request $request, Conversation $conversation): ?JsonResponse
+    {
+        if ($conversation->deleted_at !== null) {
+            return response()->json(['data' => ['message' => 'Conversation not found']], 404);
+        }
+
+        $isParticipant = $conversation->participants()->where('user_id', $request->user()->id)->exists();
+
+        if (! $isParticipant) {
+            return response()->json(['data' => ['message' => 'Forbidden']], 403);
+        }
+
+        return null;
+    }
+
+    /**
+     * @return HasMany<Message, Conversation>
+     */
+    private function readableMessages(Request $request, Conversation $conversation): HasMany
+    {
+        return $conversation->messages()
+            ->visibleTo($request->user())
+            ->with(['sender:id,name,avatar_url', 'reactions.user:id,name,avatar_url', 'replyTo.sender:id,name,avatar_url', 'attachments']);
     }
 }

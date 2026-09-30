@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Str;
 
 class Message extends Model
@@ -49,6 +50,32 @@ class Message extends Model
     public function scopeUserMessages(Builder $query): Builder
     {
         return $query->where('type', 'user');
+    }
+
+    /**
+     * Messages $user may read: in a conversation they have a participant
+     * row in, that hasn't been deleted, and — for a member who left or was
+     * removed — no later than the message that recorded it
+     * (left_at_message_id; see ConversationParticipantService::leave()).
+     *
+     * The one rule behind every endpoint that reads messages, so a new one
+     * can't forget part of it. A correlated EXISTS rather than a join, so it
+     * composes with any other constraint without duplicating rows.
+     */
+    public function scopeVisibleTo(Builder $query, User $user): Builder
+    {
+        return $query->whereExists(function (QueryBuilder $participation) use ($user): void {
+            $participation->selectRaw('1')
+                ->from('conversation_participants')
+                ->join('conversations', 'conversations.id', '=', 'conversation_participants.conversation_id')
+                ->whereColumn('conversation_participants.conversation_id', 'messages.conversation_id')
+                ->where('conversation_participants.user_id', $user->id)
+                ->whereNull('conversations.deleted_at')
+                ->where(function (QueryBuilder $cutoff): void {
+                    $cutoff->whereNull('conversation_participants.left_at_message_id')
+                        ->orWhereColumn('messages.id', '<=', 'conversation_participants.left_at_message_id');
+                });
+        });
     }
 
     // Relationships

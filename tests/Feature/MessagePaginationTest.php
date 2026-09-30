@@ -172,3 +172,71 @@ test('a member who left still sees history frozen at the moment they left when p
     expect($bodies)->toHaveCount(5);
     expect($bodies)->each->toStartWith('before-');
 });
+
+test('after_id reads forwards towards the newest message, oldest first', function () {
+    [$alice, $bob, $conversation] = paginationConversation();
+    $messages = seedMessages($conversation, $bob, 12);
+
+    $first = $this->actingAs($alice)
+        ->getJson("/api/conversations/{$conversation->id}/messages?limit=5&after_id={$messages[2]->id}")
+        ->assertOk();
+
+    expect(collect($first->json('data'))->pluck('body')->all())->toBe(['m-4', 'm-5', 'm-6', 'm-7', 'm-8']);
+    expect($first->json('meta.has_more'))->toBeTrue();
+    expect($first->json('meta.next_after_id'))->toBe($messages[7]->id);
+
+    $second = $this->actingAs($alice)
+        ->getJson("/api/conversations/{$conversation->id}/messages?limit=5&after_id={$first->json('meta.next_after_id')}")
+        ->assertOk();
+
+    expect(collect($second->json('data'))->pluck('body')->all())->toBe(['m-9', 'm-10', 'm-11', 'm-12']);
+    expect($second->json('meta.has_more'))->toBeFalse();
+    expect($second->json('meta.next_after_id'))->toBeNull();
+});
+
+test('reading forwards stops at the cutoff of a member who left', function () {
+    [$alice, $bob, $conversation] = paginationConversation();
+    $before = seedMessages($conversation, $bob, 4, 'before');
+
+    ConversationParticipant::where('conversation_id', $conversation->id)
+        ->where('user_id', $alice->id)
+        ->update(['left_at' => now(), 'left_at_message_id' => end($before)->id]);
+
+    seedMessages($conversation, $bob, 3, 'after');
+
+    $response = $this->actingAs($alice)
+        ->getJson("/api/conversations/{$conversation->id}/messages?after_id={$before[0]->id}")
+        ->assertOk();
+
+    expect(collect($response->json('data'))->pluck('body')->all())->toBe(['before-2', 'before-3', 'before-4']);
+    expect($response->json('meta.has_more'))->toBeFalse();
+});
+
+test('a page is read in one direction at a time', function () {
+    [$alice, $bob, $conversation] = paginationConversation();
+    $messages = seedMessages($conversation, $bob, 3);
+
+    $this->actingAs($alice)
+        ->getJson("/api/conversations/{$conversation->id}/messages?before_id={$messages[2]->id}&after_id={$messages[0]->id}")
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('after_id');
+});
+
+test('a malformed cursor is a validation error, not a server error', function () {
+    [$alice, , $conversation] = paginationConversation();
+
+    $this->actingAs($alice)
+        ->getJson("/api/conversations/{$conversation->id}/messages?before_id=not-a-uuid")
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('before_id');
+});
+
+test('the history of a deleted group is gone', function () {
+    [$alice, $bob, $conversation] = paginationConversation();
+    seedMessages($conversation, $bob, 3);
+    $conversation->forceFill(['deleted_at' => now()])->save();
+
+    $this->actingAs($alice)
+        ->getJson("/api/conversations/{$conversation->id}/messages")
+        ->assertNotFound();
+});

@@ -91,7 +91,8 @@ apply — see [Local setup](#local-setup)).
 
 | Method | Endpoint | Notes |
 |---|---|---|
-| GET | `/conversations/{id}/messages` | cursor-paginated: `?before_id=&limit=` (default 25, max 100); returns `meta.has_more` and `meta.next_before_id` |
+| GET | `/conversations/{id}/messages` | cursor-paginated, one direction per request: `?before_id=` reads older (returns `meta.has_more`, `meta.next_before_id`), `?after_id=` reads newer (returns `meta.has_more`, `meta.next_after_id`); `limit` default 25, max 100; 404 for a deleted group |
+| GET | `/conversations/{id}/messages/{message}/context` | a window around one message, for jumping to it: `?before=&after=` (default 20, max 50 each way); returns `meta.target_id`, `has_more_before`/`has_more_after` and a cursor each way; 404 when the message is past the viewer's leave cutoff, in another conversation, or in a deleted group; throttled 60/min |
 | POST | `/messages` | throttled 30/min |
 | GET | `/messages/search` | throttled 30/min |
 | PATCH | `/messages/{id}` | throttled 30/min |

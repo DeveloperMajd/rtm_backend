@@ -56,6 +56,7 @@ Route::middleware(['web', 'auth:sanctum'])->group(function () {
         Route::patch('/messages/{message}', 'update')->middleware('throttle:30,1,messages.update.');
         Route::delete('/messages/{message}', 'destroy')->middleware('throttle:30,1,messages.destroy.');
         Route::get('/conversations/{conversation}/messages', 'index');
+        Route::get('/conversations/{conversation}/messages/{message}/context', 'context')->middleware('throttle:60,1,messages.context.');
     });
 
     Route::controller(AttachmentController::class)->group(function () {
