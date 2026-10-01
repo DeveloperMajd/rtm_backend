@@ -157,9 +157,14 @@ class ConversationController extends Controller
 
     public function typing(Request $request, Conversation $conversation): Response
     {
-        $isParticipant = $conversation->participants()->where('user_id', $request->user()->id)->exists();
+        // Current members only: someone who left can't write to the group,
+        // so they can't be shown writing to it either.
+        $isActiveParticipant = $conversation->participants()
+            ->where('user_id', $request->user()->id)
+            ->whereNull('left_at')
+            ->exists();
 
-        if (! $isParticipant) {
+        if (! $isActiveParticipant) {
             return response()->noContent(403);
         }
 
