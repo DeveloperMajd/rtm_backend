@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Services\LastSeenVisibility;
 use App\Services\PresenceService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -23,7 +24,7 @@ class ConversationParticipantResource extends JsonResource
             'joined_at' => $this->joined_at,
             'left_at' => $this->left_at,
             'is_online' => app(PresenceService::class)->isOnline($this->user_id),
-            'last_seen_at' => $this->user?->last_seen_at,
+            'last_seen_at' => app(LastSeenVisibility::class)->lastSeenFor($request->user(), $this->user),
         ];
     }
 }

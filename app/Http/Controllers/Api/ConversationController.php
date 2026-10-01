@@ -15,8 +15,10 @@ use App\Http\Resources\ConversationResource;
 use App\Models\Conversation;
 use App\Models\ConversationParticipant;
 use App\Models\User;
+use App\Models\UserSettings;
 use App\Services\ConversationParticipantService;
 use App\Services\ConversationService;
+use App\Services\LastSeenVisibility;
 use App\Services\SystemMessageService;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\JsonResponse;
@@ -49,6 +51,12 @@ class ConversationController extends Controller
             ->orderByRaw('COALESCE(LEAST(conversations.last_message_at, viewer.left_at), conversations.created_at) DESC')
             ->orderByDesc('conversations.id')
             ->get();
+
+        // Everyone's "Show last seen" setting, in one go for the whole list.
+        app(LastSeenVisibility::class)->prime(
+            $request->user(),
+            $conversations->flatMap(fn (Conversation $c) => $c->participants->pluck('user_id')),
+        );
 
         return ConversationResource::collection($conversations);
     }
@@ -168,7 +176,11 @@ class ConversationController extends Controller
             return response()->noContent(403);
         }
 
-        broadcast(new TypingIndicator($conversation->id, $request->user()));
+        // Someone who has turned typing indicators off isn't shown typing:
+        // accepted, so their client needn't care, and nothing is sent.
+        if (UserSettings::for($request->user())->typing_indicators) {
+            broadcast(new TypingIndicator($conversation->id, $request->user()));
+        }
 
         return response()->noContent();
     }
@@ -223,7 +235,9 @@ class ConversationController extends Controller
                 'last_read_at' => now(),
             ]);
 
-        if ($advanced > 0) {
+        // The pointer always moves (unread counts depend on it); whether the
+        // others hear about it is the reader's "Read receipts" setting.
+        if ($advanced > 0 && UserSettings::for($request->user())->read_receipts) {
             broadcast(new ConversationRead($participant->refresh()));
         }
 
@@ -301,14 +315,28 @@ class ConversationController extends Controller
             return response()->json(['data' => ['message' => 'Forbidden']], 403);
         }
 
-        $pointers = $conversation->participants()
+        $participants = $conversation->participants()
             ->active()
-            ->get(['user_id', 'last_read_message_id', 'last_read_at'])
-            ->map(fn (ConversationParticipant $participant): array => [
+            ->get(['user_id', 'last_read_message_id', 'last_read_at']);
+
+        // Read receipts work both ways: someone who doesn't share their own
+        // read state doesn't see anyone else's, and nobody sees the read
+        // state of someone who doesn't share it. Their entries stay in the
+        // list, empty, like a member who hasn't read anything yet.
+        $viewerId = $request->user()->id;
+        $viewerShares = UserSettings::for($request->user())->read_receipts;
+        $notSharing = array_flip(UserSettings::withoutReadReceipts($participants->pluck('user_id')->all()));
+
+        $pointers = $participants->map(function (ConversationParticipant $participant) use ($viewerId, $viewerShares, $notSharing): array {
+            $visible = $participant->user_id === $viewerId
+                || ($viewerShares && ! isset($notSharing[$participant->user_id]));
+
+            return [
                 'user_id' => $participant->user_id,
-                'last_read_message_id' => $participant->last_read_message_id,
-                'last_read_at' => $participant->last_read_at,
-            ]);
+                'last_read_message_id' => $visible ? $participant->last_read_message_id : null,
+                'last_read_at' => $visible ? $participant->last_read_at : null,
+            ];
+        });
 
         return response()->json(['data' => $pointers->values()]);
     }

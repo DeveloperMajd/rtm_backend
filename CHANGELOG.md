@@ -5,6 +5,45 @@ whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Notification and privacy settings
+
+- **New:** a `user_settings` table with one row per person:
+  `read_receipts`, `last_seen_visibility` (`everyone`, `contacts` or
+  `nobody`), `typing_indicators`, `message_sounds` and
+  `desktop_notifications`.
+  - A row is written only the first time someone changes a setting.
+  - Until then the defaults apply, and they're what the app has always
+    done: share everything, make no sound.
+- **New:** `GET /api/settings` and `PATCH /api/settings`. The PATCH is
+  partial, needs at least one setting, and is throttled to 20 a minute.
+- **Enforced:** read receipts.
+  - Someone with them off still reads (their pointer moves, so unread
+    counts stay right), but `ConversationRead` isn't broadcast.
+  - `GET /reads` leaves their pointer empty for others.
+  - It works both ways: they see nobody else's either.
+- **Enforced:** last seen. Every resource that carries `last_seen_at`
+  (conversations, participants, contacts, contact search) goes through
+  `LastSeenVisibility`.
+  - The value is null when the person has chosen not to show it to the
+    viewer. "Contacts" means people they've added.
+  - Online/offline is unaffected.
+  - Lookups are batched per request: a list costs the same few queries
+    however long it is.
+- **Enforced:** typing. `POST /typing` is accepted but not broadcast for
+  someone with typing indicators off.
+- **Changed (audit D3, for typing):** a member who has left can no longer
+  send typing pings to the group (403).
+- Sounds and desktop notifications are stored here, so they follow the
+  person between devices. The client plays the sounds and shows the
+  notifications.
+
+**Deploy:** one migration creates `user_settings`. It's a new table, so
+nothing existing is touched.
+
+**Compatibility:** additive. With nobody having changed a setting, every
+response is what it was, except that a member who has left now gets a 403
+from the typing endpoint (the deployed frontend never sends them one).
+
 ### Pin, mute and archive
 
 - **New:** `pinned_at`, `muted_at` and `archived_at` on

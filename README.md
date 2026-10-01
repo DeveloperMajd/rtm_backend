@@ -81,10 +81,23 @@ apply — see [Local setup](#local-setup)).
 | POST | `/conversations` | throttled 10/min |
 | GET | `/conversations/{id}` | |
 | PATCH | `/conversations/{id}` | rename a group; throttled 20/min |
-| POST | `/conversations/{id}/typing` | throttled 30/min |
+| POST | `/conversations/{id}/typing` | current members only; accepted but not broadcast when the sender has typing indicators off; throttled 30/min |
 | POST | `/conversations/{id}/read` | moves the viewer's read pointer to `message_id` (or the newest message without one), never backwards; broadcasts `ConversationRead` when it moves; 403 for a member who left; throttled 30/min |
 | PATCH | `/conversations/{id}/preferences` | the viewer's own `pinned` / `muted` / `archived` (booleans, at least one); archiving unpins, pinning unarchives; tells the viewer's other tabs (`ConversationPreferencesUpdated` on their user channel); allowed in a group they left; throttled 30/min |
-| GET | `/conversations/{id}/reads` | every current member's read pointer (`user_id`, `last_read_message_id`, `last_read_at`), for "Seen" / "Seen by"; current members only; throttled 60/min |
+| GET | `/conversations/{id}/reads` | every current member's read pointer (`user_id`, `last_read_message_id`, `last_read_at`), for "Seen" / "Seen by"; empty for anyone who doesn't share read receipts, and for everyone when the viewer doesn't; current members only; throttled 60/min |
+
+</details>
+
+<details>
+<summary><strong>Settings</strong></summary>
+
+| Method | Endpoint | Notes |
+|---|---|---|
+| GET | `/settings` | the viewer's `read_receipts`, `last_seen_visibility` (`everyone`/`contacts`/`nobody`), `typing_indicators`, `message_sounds`, `desktop_notifications` — defaults until first changed |
+| PATCH | `/settings` | any of the above, at least one; throttled 20/min |
+
+Every `last_seen_at` in a response goes through `LastSeenVisibility`: null
+when the person has chosen not to show it to the viewer.
 
 </details>
 

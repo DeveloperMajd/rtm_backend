@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\MessageReactionController;
 use App\Http\Controllers\Api\PasswordResetController;
 use App\Http\Controllers\Api\PresenceController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\SocialAuthController;
 use Illuminate\Support\Facades\Route;
 
@@ -86,6 +87,11 @@ Route::middleware(['web', 'auth:sanctum'])->group(function () {
         Route::patch('/password', 'updatePassword')->middleware('throttle:5,1,profile.updatePassword.');
         Route::post('/avatar', 'updateAvatar')->middleware('throttle:10,1,profile.updateAvatar.');
         Route::delete('/avatar', 'destroyAvatar');
+    });
+
+    Route::prefix('settings')->controller(SettingsController::class)->group(function () {
+        Route::get('/', 'show');
+        Route::patch('/', 'update')->middleware('throttle:20,1,settings.update.');
     });
 
     Route::controller(PresenceController::class)->prefix('presence')->group(function () {

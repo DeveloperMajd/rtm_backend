@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Models\Conversation;
 use App\Models\User;
 use App\Policies\ConversationPolicy;
+use App\Services\LastSeenVisibility;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -20,7 +21,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Remembers who may see whose last-seen time for one request (or
+        // queued job) at a time — never across them.
+        $this->app->scoped(LastSeenVisibility::class);
     }
 
     /**
