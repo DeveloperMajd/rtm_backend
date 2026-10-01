@@ -5,6 +5,43 @@ whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Pin, mute and archive
+
+- **New:** `pinned_at`, `muted_at` and `archived_at` on
+  `conversation_participants`. They are each person's own view of a
+  conversation; null means off.
+- **New:** `PATCH /api/conversations/{id}/preferences` takes `pinned`,
+  `muted` and `archived`, as booleans. At least one is required. It answers
+  with all three as they now stand.
+  - Archiving unpins, and pinning unarchives.
+  - Switching on something already on keeps its original time.
+  - Allowed in a group the viewer has left, so they can archive it.
+  - 403 outside the conversation, 404 for a deleted group.
+  - Throttled to 30 a minute.
+- **New:** a `ConversationPreferencesUpdated` event on the viewer's own
+  `private-App.Models.User.{id}` channel, so their other tabs and devices
+  agree. It's sent only when something changed.
+- **New:** `GET /api/conversations` carries the viewer's three fields.
+- **Changed:** `GET /api/conversations` has a real order: pinned first,
+  then most recent activity. Before, it had no `ORDER BY`.
+  - For a group the viewer left, activity stops when they left, so the
+    order doesn't give away that it carried on.
+  - It still returns archived conversations. Keeping them aside is the
+    client's job, so a link to one still opens it.
+- **Changed:** sending a message brings an archived conversation back for
+  the other members, unless they muted it. The sender's own archive is
+  left alone. It's one UPDATE per message.
+- **Not yet:** muting doesn't silence anything yet, because there are no
+  sounds or notifications until the notification settings arrive. For now
+  it keeps the conversation out of the unread badges.
+
+**Deploy:** one migration adds three nullable columns with no default. In
+Postgres that's a catalogue change: no table rewrite, and no lock held
+while the app runs.
+
+**Compatibility:** additive. The deployed frontend ignores the new fields
+and sorts the list itself, as it always has.
+
 ### Read receipts
 
 - **New:** `GET /api/conversations/{id}/reads` lists how far every current

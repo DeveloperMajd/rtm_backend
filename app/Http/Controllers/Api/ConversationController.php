@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Events\ConversationDeleted;
+use App\Events\ConversationPreferencesUpdated;
 use App\Events\ConversationRead;
 use App\Events\TypingIndicator;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\MarkConversationReadRequest;
 use App\Http\Requests\StoreConversationRequest;
+use App\Http\Requests\UpdateConversationPreferencesRequest;
 use App\Http\Requests\UpdateConversationRequest;
 use App\Http\Resources\ConversationResource;
 use App\Models\Conversation;
@@ -16,6 +18,7 @@ use App\Models\User;
 use App\Services\ConversationParticipantService;
 use App\Services\ConversationService;
 use App\Services\SystemMessageService;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -29,9 +32,22 @@ class ConversationController extends Controller
     {
         $userId = $request->user()->id;
 
+        // The viewer's own participant row, joined rather than asked about
+        // per conversation: it's what the order below is decided by.
         $conversations = Conversation::visible()
-            ->whereHas('participants', fn ($query) => $query->where('user_id', $userId))
+            ->join('conversation_participants as viewer', function (JoinClause $join) use ($userId): void {
+                $join->on('viewer.conversation_id', '=', 'conversations.id')
+                    ->where('viewer.user_id', '=', $userId);
+            })
+            ->select('conversations.*')
             ->with(['lastMessage.sender', 'participants.user'])
+            // Pinned first, then the most recently active. For a group the
+            // viewer has left, activity stops when they left (LEAST ignores
+            // the NULL left_at of everyone still in), so the order can't give
+            // away that the group carried on without them.
+            ->orderByRaw('viewer.pinned_at IS NULL')
+            ->orderByRaw('COALESCE(LEAST(conversations.last_message_at, viewer.left_at), conversations.created_at) DESC')
+            ->orderByDesc('conversations.id')
             ->get();
 
         return ConversationResource::collection($conversations);
@@ -207,6 +223,53 @@ class ConversationController extends Controller
         }
 
         return response()->noContent();
+    }
+
+    /**
+     * Pins, mutes or archives the conversation for the viewer, or undoes
+     * it — their own view of it, which nobody else sees. Allowed for a group
+     * they've left, too: archiving one is a way to tidy it away.
+     *
+     * Archiving takes a conversation off the main list, so it unpins it;
+     * pinning one puts it back on the list, so it unarchives it. Switching on
+     * something already on keeps the time it was first switched on.
+     */
+    public function updatePreferences(UpdateConversationPreferencesRequest $request, Conversation $conversation): JsonResponse
+    {
+        if ($conversation->deleted_at) {
+            return response()->json(['data' => ['message' => 'Conversation not found']], 404);
+        }
+
+        $participant = $conversation->participants()->where('user_id', $request->user()->id)->first();
+
+        if (! $participant) {
+            return response()->json(['data' => ['message' => 'Forbidden']], 403);
+        }
+
+        $changes = [];
+        foreach (['pinned' => 'pinned_at', 'muted' => 'muted_at', 'archived' => 'archived_at'] as $key => $column) {
+            if ($request->has($key)) {
+                $changes[$column] = $request->boolean($key) ? ($participant->{$column} ?? now()) : null;
+            }
+        }
+
+        if (($changes['archived_at'] ?? null) !== null) {
+            $changes['pinned_at'] = null;
+        } elseif (($changes['pinned_at'] ?? null) !== null) {
+            $changes['archived_at'] = null;
+        }
+
+        $participant->fill($changes)->save();
+
+        if ($participant->wasChanged()) {
+            broadcast(new ConversationPreferencesUpdated($participant));
+        }
+
+        return response()->json(['data' => [
+            'pinned_at' => $participant->pinned_at,
+            'muted_at' => $participant->muted_at,
+            'archived_at' => $participant->archived_at,
+        ]]);
     }
 
     /**

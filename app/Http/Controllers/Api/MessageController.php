@@ -177,6 +177,16 @@ class MessageController extends Controller
         $conversation->last_message_id = $message->id;
         $conversation->save();
 
+        // A new message brings an archived conversation back onto the
+        // others' main lists — unless they've muted it, which is how someone
+        // says they don't want to hear about it. One UPDATE for everyone.
+        $conversation->participants()
+            ->where('user_id', '!=', $request->user()->id)
+            ->whereNull('left_at')
+            ->whereNotNull('archived_at')
+            ->whereNull('muted_at')
+            ->update(['archived_at' => null]);
+
         $message->load(['sender', 'reactions.user:id,name,avatar_url', 'replyTo.sender:id,name,avatar_url', 'attachments']);
 
         broadcast(new MessageSent($message));

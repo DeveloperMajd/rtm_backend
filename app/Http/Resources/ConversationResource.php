@@ -96,6 +96,10 @@ class ConversationResource extends JsonResource
                 $this->relationLoaded('participants'),
                 fn () => $viewerLeftAt !== null ? null : $viewerParticipant?->last_read_message_id,
             ),
+            // The viewer's own pin, mute and archive (null = off).
+            'pinned_at' => $this->when($this->relationLoaded('participants'), fn () => $viewerParticipant?->pinned_at),
+            'muted_at' => $this->when($this->relationLoaded('participants'), fn () => $viewerParticipant?->muted_at),
+            'archived_at' => $this->when($this->relationLoaded('participants'), fn () => $viewerParticipant?->archived_at),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];
