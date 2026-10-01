@@ -148,11 +148,20 @@ class ConversationController extends Controller
         return response()->noContent();
     }
 
-    public function markAsRead(Request $request, Conversation $conversation): Response
+    /**
+     * A member who left is refused: their history is frozen at the moment
+     * they left, and moving the pointer on would mark as read messages they
+     * can't see. A deleted group is gone.
+     */
+    public function markAsRead(Request $request, Conversation $conversation): Response|JsonResponse
     {
+        if ($conversation->deleted_at) {
+            return response()->json(['data' => ['message' => 'Conversation not found']], 404);
+        }
+
         $participant = $conversation->participants()->where('user_id', $request->user()->id)->first();
 
-        if (! $participant) {
+        if (! $participant || $participant->left_at !== null) {
             return response()->noContent(403);
         }
 

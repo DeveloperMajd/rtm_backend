@@ -89,3 +89,40 @@ test('a non-participant cannot mark a conversation as read', function () {
         ->postJson("/api/conversations/{$conversation->id}/read")
         ->assertForbidden();
 });
+
+function readPointerOf(Conversation $conversation, User $user): ?string
+{
+    return ConversationParticipant::where('conversation_id', $conversation->id)
+        ->where('user_id', $user->id)
+        ->value('last_read_message_id');
+}
+
+/**
+ * @return array<int, Message>
+ */
+function messagesOf(Conversation $conversation): array
+{
+    return $conversation->messages()->orderBy('id')->get()->all();
+}
+
+// D3 in the Phase 2 audit, for reading: a member who left could move their
+// pointer past the moment they left.
+test('a member who left cannot move their pointer on', function () {
+    [$alice, , $conversation] = readReceiptConversation();
+    [$first] = messagesOf($conversation);
+
+    ConversationParticipant::where('conversation_id', $conversation->id)
+        ->where('user_id', $alice->id)
+        ->update(['left_at' => now(), 'left_at_message_id' => $first->id]);
+
+    $this->actingAs($alice)->postJson("/api/conversations/{$conversation->id}/read")->assertForbidden();
+
+    expect(readPointerOf($conversation, $alice))->toBeNull();
+});
+
+test('a deleted group cannot be marked as read', function () {
+    [$alice, , $conversation] = readReceiptConversation();
+    $conversation->forceFill(['deleted_at' => now()])->save();
+
+    $this->actingAs($alice)->postJson("/api/conversations/{$conversation->id}/read")->assertNotFound();
+});
