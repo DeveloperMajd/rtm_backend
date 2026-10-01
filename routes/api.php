@@ -48,6 +48,7 @@ Route::middleware(['web', 'auth:sanctum'])->group(function () {
         Route::delete('/{conversation}', 'destroy')->middleware('throttle:10,1,conversations.destroy.');
         Route::post('/{conversation}/typing', 'typing')->middleware('throttle:30,1,conversations.typing.');
         Route::post('/{conversation}/read', 'markAsRead')->middleware('throttle:30,1,conversations.markAsRead.');
+        Route::get('/{conversation}/reads', 'reads')->middleware('throttle:60,1,conversations.reads.');
     });
 
     Route::controller(MessageController::class)->group(function () {

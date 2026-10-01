@@ -5,6 +5,37 @@ whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Read receipts
+
+- **New:** `GET /api/conversations/{id}/reads` lists how far every current
+  member has read: `user_id`, `last_read_message_id` and `last_read_at`.
+  - It answers 403 to anyone who isn't a current member, including someone
+    who left.
+  - It answers 404 for a deleted group.
+  - Throttled to 60 a minute.
+- **New:** `POST /api/conversations/{id}/read` takes an optional
+  `message_id`: read up to there. Without it, it reads up to the newest
+  message, as before.
+  - The pointer never moves backwards. The update is one conditional
+    UPDATE, so racing requests can't undo each other.
+  - A message from another conversation is a 422.
+- **New:** a `ConversationRead` event on `private-conversation.{id}`, with
+  `user_id`, `last_read_message_id` and `last_read_at`. It is sent only
+  when a pointer actually moves, so a repeat or stale report broadcasts
+  nothing.
+- **Changed (audit D3, for reading):** a member who left can no longer mark
+  the conversation as read (403). Before, it moved their pointer past the
+  moment they left.
+- **Changed:** marking a deleted group as read is a 404.
+- **Not yet:** the privacy setting to stop sharing your read state comes
+  with the notification and privacy settings. Until then everyone's read
+  state is shared, which will be that setting's default.
+
+**Deploy:** no migration. The pointer columns already exist.
+
+**Compatibility:** additive. The deployed frontend's `POST /read` has no
+body and works as before. It never calls it for a group it has left.
+
 ### Search within a conversation
 
 - **New:** `GET /api/messages/search` takes an optional `conversation_id`

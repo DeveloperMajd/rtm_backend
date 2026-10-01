@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Events\ConversationDeleted;
+use App\Events\ConversationRead;
 use App\Events\TypingIndicator;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\MarkConversationReadRequest;
 use App\Http\Requests\StoreConversationRequest;
 use App\Http\Requests\UpdateConversationRequest;
 use App\Http\Resources\ConversationResource;
 use App\Models\Conversation;
+use App\Models\ConversationParticipant;
 use App\Models\User;
 use App\Services\ConversationParticipantService;
 use App\Services\ConversationService;
@@ -18,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class ConversationController extends Controller
 {
@@ -149,11 +153,20 @@ class ConversationController extends Controller
     }
 
     /**
+     * Moves the viewer's read pointer forward — to `message_id`, or to the
+     * newest message without one — and tells the conversation (the
+     * ConversationRead event) so the others' "Sent" can become "Seen".
+     *
+     * The pointer never moves backwards: a request reporting less than it
+     * already records (a slower tab, a late retry) changes nothing and
+     * broadcasts nothing. That's one conditional UPDATE, so two requests
+     * racing each other can't undo one another either.
+     *
      * A member who left is refused: their history is frozen at the moment
-     * they left, and moving the pointer on would mark as read messages they
-     * can't see. A deleted group is gone.
+     * they left, and moving the pointer on would mark as read — and tell the
+     * group they'd read — messages they can't see.
      */
-    public function markAsRead(Request $request, Conversation $conversation): Response|JsonResponse
+    public function markAsRead(MarkConversationReadRequest $request, Conversation $conversation): Response|JsonResponse
     {
         if ($conversation->deleted_at) {
             return response()->json(['data' => ['message' => 'Conversation not found']], 404);
@@ -165,13 +178,70 @@ class ConversationController extends Controller
             return response()->noContent(403);
         }
 
-        $latestMessageId = $conversation->messages()->orderByDesc('id')->value('id');
+        $messageId = $request->validated('message_id');
 
-        $participant->update([
-            'last_read_message_id' => $latestMessageId,
-            'last_read_at' => now(),
-        ]);
+        if ($messageId !== null && ! $conversation->messages()->whereKey($messageId)->exists()) {
+            throw ValidationException::withMessages([
+                'message_id' => 'That message isn\'t in this conversation.',
+            ]);
+        }
+
+        $readUpTo = $messageId ?? $conversation->messages()->orderByDesc('id')->value('id');
+
+        if ($readUpTo === null) {
+            return response()->noContent();
+        }
+
+        $advanced = ConversationParticipant::query()
+            ->whereKey($participant->id)
+            ->where(fn ($query) => $query
+                ->whereNull('last_read_message_id')
+                ->orWhere('last_read_message_id', '<', $readUpTo))
+            ->update([
+                'last_read_message_id' => $readUpTo,
+                'last_read_at' => now(),
+            ]);
+
+        if ($advanced > 0) {
+            broadcast(new ConversationRead($participant->refresh()));
+        }
 
         return response()->noContent();
+    }
+
+    /**
+     * Where everyone still in the conversation has read up to — what turns
+     * "Sent" into "Seen" and fills the group's "Seen by" list. Pointers only:
+     * the client compares them with its own messages' ids.
+     *
+     * For current members only. Someone who left sees the conversation as it
+     * was when they left, and how far the others have read since isn't part
+     * of that.
+     */
+    public function reads(Request $request, Conversation $conversation): JsonResponse
+    {
+        if ($conversation->deleted_at) {
+            return response()->json(['data' => ['message' => 'Conversation not found']], 404);
+        }
+
+        $isActiveParticipant = $conversation->participants()
+            ->where('user_id', $request->user()->id)
+            ->whereNull('left_at')
+            ->exists();
+
+        if (! $isActiveParticipant) {
+            return response()->json(['data' => ['message' => 'Forbidden']], 403);
+        }
+
+        $pointers = $conversation->participants()
+            ->active()
+            ->get(['user_id', 'last_read_message_id', 'last_read_at'])
+            ->map(fn (ConversationParticipant $participant): array => [
+                'user_id' => $participant->user_id,
+                'last_read_message_id' => $participant->last_read_message_id,
+                'last_read_at' => $participant->last_read_at,
+            ]);
+
+        return response()->json(['data' => $pointers->values()]);
     }
 }
