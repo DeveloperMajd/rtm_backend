@@ -26,6 +26,9 @@ class ConversationParticipant extends Model
         'left_at_message_id',
         'last_read_message_id',
         'last_read_at',
+        'pinned_at',
+        'muted_at',
+        'archived_at',
     ];
 
     /**
@@ -37,6 +40,9 @@ class ConversationParticipant extends Model
             'joined_at' => 'datetime',
             'left_at' => 'datetime',
             'last_read_at' => 'datetime',
+            'pinned_at' => 'datetime',
+            'muted_at' => 'datetime',
+            'archived_at' => 'datetime',
         ];
     }
 

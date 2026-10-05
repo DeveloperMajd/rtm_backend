@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Str;
@@ -42,6 +43,11 @@ class User extends Authenticatable
     }
 
     // Relationships
+    public function settings(): HasOne
+    {
+        return $this->hasOne(UserSettings::class);
+    }
+
     public function createdConversations(): HasMany
     {
         return $this->hasMany(Conversation::class, 'created_by_user_id');

@@ -5,8 +5,12 @@ namespace App\Providers;
 use App\Models\Conversation;
 use App\Models\User;
 use App\Policies\ConversationPolicy;
+use App\Services\LastSeenVisibility;
 use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 
@@ -17,7 +21,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Remembers who may see whose last-seen time for one request (or
+        // queued job) at a time — never across them.
+        $this->app->scoped(LastSeenVisibility::class);
     }
 
     /**
@@ -26,6 +32,16 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Gate::policy(Conversation::class, ConversationPolicy::class);
+
+        // Searching one conversation re-runs as the viewer types into the
+        // in-chat search bar, so it gets twice the palette's allowance — and a
+        // counter of its own, so neither kind of search uses up the other's.
+        RateLimiter::for('messages.search', function (Request $request): Limit {
+            $scoped = $request->filled('conversation_id');
+
+            return Limit::perMinute($scoped ? 60 : 30)
+                ->by(($scoped ? 'messages.search.scoped.' : 'messages.search.').$request->user()?->id);
+        });
 
         // The single source of truth for "strong enough" everywhere a
         // password is set: registration, profile password change, and reset.

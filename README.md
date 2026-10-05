@@ -77,12 +77,27 @@ apply — see [Local setup](#local-setup)).
 
 | Method | Endpoint | Notes |
 |---|---|---|
-| GET | `/conversations` | |
+| GET | `/conversations` | pinned first, then most recent activity; each carries the viewer's own `pinned_at`, `muted_at`, `archived_at` (archived ones are included — the client keeps them aside) |
 | POST | `/conversations` | throttled 10/min |
 | GET | `/conversations/{id}` | |
 | PATCH | `/conversations/{id}` | rename a group; throttled 20/min |
-| POST | `/conversations/{id}/typing` | throttled 30/min |
-| POST | `/conversations/{id}/read` | throttled 30/min |
+| POST | `/conversations/{id}/typing` | current members only; accepted but not broadcast when the sender has typing indicators off; throttled 30/min |
+| POST | `/conversations/{id}/read` | moves the viewer's read pointer to `message_id` (or the newest message without one), never backwards; broadcasts `ConversationRead` when it moves; 403 for a member who left; throttled 30/min |
+| PATCH | `/conversations/{id}/preferences` | the viewer's own `pinned` / `muted` / `archived` (booleans, at least one); archiving unpins, pinning unarchives; tells the viewer's other tabs (`ConversationPreferencesUpdated` on their user channel); allowed in a group they left; throttled 30/min |
+| GET | `/conversations/{id}/reads` | every current member's read pointer (`user_id`, `last_read_message_id`, `last_read_at`), for "Seen" / "Seen by"; empty for anyone who doesn't share read receipts, and for everyone when the viewer doesn't; current members only; throttled 60/min |
+
+</details>
+
+<details>
+<summary><strong>Settings</strong></summary>
+
+| Method | Endpoint | Notes |
+|---|---|---|
+| GET | `/settings` | the viewer's `read_receipts`, `last_seen_visibility` (`everyone`/`contacts`/`nobody`), `typing_indicators`, `message_sounds`, `desktop_notifications` — defaults until first changed |
+| PATCH | `/settings` | any of the above, at least one; throttled 20/min |
+
+Every `last_seen_at` in a response goes through `LastSeenVisibility`: null
+when the person has chosen not to show it to the viewer.
 
 </details>
 
@@ -91,9 +106,10 @@ apply — see [Local setup](#local-setup)).
 
 | Method | Endpoint | Notes |
 |---|---|---|
-| GET | `/conversations/{id}/messages` | paginated |
+| GET | `/conversations/{id}/messages` | cursor-paginated, one direction per request: `?before_id=` reads older (returns `meta.has_more`, `meta.next_before_id`), `?after_id=` reads newer (returns `meta.has_more`, `meta.next_after_id`); `limit` default 25, max 100; 404 for a deleted group |
+| GET | `/conversations/{id}/messages/{message}/context` | a window around one message, for jumping to it: `?before=&after=` (default 20, max 50 each way); returns `meta.target_id`, `has_more_before`/`has_more_after` and a cursor each way; 404 when the message is past the viewer's leave cutoff, in another conversation, or in a deleted group; throttled 60/min |
 | POST | `/messages` | throttled 30/min |
-| GET | `/messages/search` | throttled 30/min |
+| GET | `/messages/search` | Postgres full-text search: `?q=` (2–200 chars), optional `conversation_id` to search one conversation, `sort=relevance` (default) or `recent`, `limit` (max 20 everywhere, 50 in one conversation); returns `meta.total`; only messages the viewer may read (no deleted groups, nothing after they left); throttled 30/min everywhere, 60/min in one conversation |
 | PATCH | `/messages/{id}` | throttled 30/min |
 | DELETE | `/messages/{id}` | redacts, doesn't hard-delete; throttled 30/min |
 | POST | `/attachments` | throttled 30/min |

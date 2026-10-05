@@ -1,11 +1,13 @@
 <?php
 
 use App\Events\MessageSent;
+use App\Events\TypingIndicator;
 use App\Models\Conversation;
 use App\Models\ConversationParticipant;
 use App\Models\Message;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 
 uses(RefreshDatabase::class);
 
@@ -179,4 +181,21 @@ test('the messages index still requires participation', function () {
     $this->actingAs($outsider)
         ->getJson("/api/conversations/{$conversation->id}/messages")
         ->assertForbidden();
+});
+
+// D3 in the Phase 2 audit, for typing: a member who left could still be
+// broadcast as typing into the group.
+test('a member who left can no longer be shown typing in the group', function () {
+    Event::fake([TypingIndicator::class]);
+    $alice = User::factory()->create();
+    $bob = User::factory()->create();
+    $group = Conversation::factory()->group('Left typing')->create(['created_by_user_id' => $alice->id]);
+    foreach ([$alice, $bob] as $user) {
+        ConversationParticipant::create(['conversation_id' => $group->id, 'user_id' => $user->id, 'role' => 'participant', 'joined_at' => now()]);
+    }
+    ConversationParticipant::where('conversation_id', $group->id)->where('user_id', $bob->id)->update(['left_at' => now()]);
+
+    $this->actingAs($bob)->postJson("/api/conversations/{$group->id}/typing")->assertForbidden();
+
+    Event::assertNotDispatched(TypingIndicator::class);
 });

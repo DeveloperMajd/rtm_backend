@@ -10,6 +10,7 @@ use App\Http\Resources\ConversationParticipantResource;
 use App\Models\Conversation;
 use App\Models\User;
 use App\Services\ConversationParticipantService;
+use App\Services\LastSeenVisibility;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -27,6 +28,8 @@ class ConversationParticipantController extends Controller
         }
 
         $participants = $conversation->participants()->with('user')->get();
+
+        app(LastSeenVisibility::class)->prime($request->user(), $participants->pluck('user_id'));
 
         return ConversationParticipantResource::collection($participants);
     }

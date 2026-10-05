@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\Message;
+use App\Services\LastSeenVisibility;
 use App\Services\PresenceService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -46,7 +47,7 @@ class ConversationResource extends JsonResource
                         'name' => $other->user?->name,
                         'avatar_url' => $other->user?->avatar_url,
                         'is_online' => in_array($other->user_id, $onlineUserIds, true),
-                        'last_seen_at' => $other->user?->last_seen_at,
+                        'last_seen_at' => app(LastSeenVisibility::class)->lastSeenFor($request->user(), $other->user),
                     ] : null;
                 },
             ),
@@ -54,7 +55,7 @@ class ConversationResource extends JsonResource
                 $this->relationLoaded('participants'),
                 fn () => $this->resolveLatestMessage($viewerParticipant?->left_at_message_id),
             ),
-            'participants' => $this->whenLoaded('participants', function () use ($onlineUserIds) {
+            'participants' => $this->whenLoaded('participants', function () use ($onlineUserIds, $request) {
                 return $this->participants->map(fn ($p) => [
                     'user_id' => $p->user_id,
                     'name' => $p->user?->name,
@@ -62,7 +63,7 @@ class ConversationResource extends JsonResource
                     'role' => $p->role,
                     'left_at' => $p->left_at,
                     'is_online' => in_array($p->user_id, $onlineUserIds, true),
-                    'last_seen_at' => $p->user?->last_seen_at,
+                    'last_seen_at' => app(LastSeenVisibility::class)->lastSeenFor($request->user(), $p->user),
                 ]);
             }),
             'participants_count' => $this->whenLoaded(
@@ -86,6 +87,20 @@ class ConversationResource extends JsonResource
                         ->count();
                 },
             ),
+            // The exact message the viewer had read up to, which is what
+            // unread_count above is derived from. Exposing it lets a client
+            // put its "new messages" divider on the very message the server
+            // counted from, instead of inferring the position by counting
+            // unread_count messages backwards from the end and having to
+            // reproduce the same rules about whose messages count.
+            'last_read_message_id' => $this->when(
+                $this->relationLoaded('participants'),
+                fn () => $viewerLeftAt !== null ? null : $viewerParticipant?->last_read_message_id,
+            ),
+            // The viewer's own pin, mute and archive (null = off).
+            'pinned_at' => $this->when($this->relationLoaded('participants'), fn () => $viewerParticipant?->pinned_at),
+            'muted_at' => $this->when($this->relationLoaded('participants'), fn () => $viewerParticipant?->muted_at),
+            'archived_at' => $this->when($this->relationLoaded('participants'), fn () => $viewerParticipant?->archived_at),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

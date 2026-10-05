@@ -10,6 +10,7 @@ use App\Http\Resources\ConversationResource;
 use App\Models\Contact;
 use App\Models\User;
 use App\Services\ConversationService;
+use App\Services\LastSeenVisibility;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -22,6 +23,8 @@ class ContactController extends Controller
             ->contacts()
             ->orderBy('name')
             ->get();
+
+        app(LastSeenVisibility::class)->prime($request->user(), $contacts->pluck('id'));
 
         return ContactResource::collection($contacts);
     }
@@ -49,6 +52,8 @@ class ContactController extends Controller
             ->orderBy('name')
             ->limit(10)
             ->get();
+
+        app(LastSeenVisibility::class)->prime($user, $matches->pluck('id'));
 
         return ContactResource::collection($matches);
     }
