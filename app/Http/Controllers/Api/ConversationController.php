@@ -19,6 +19,7 @@ use App\Models\UserSettings;
 use App\Services\ConversationParticipantService;
 use App\Services\ConversationService;
 use App\Services\LastSeenVisibility;
+use App\Services\ReadReceiptVisibility;
 use App\Services\SystemMessageService;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\JsonResponse;
@@ -300,7 +301,7 @@ class ConversationController extends Controller
      * was when they left, and how far the others have read since isn't part
      * of that.
      */
-    public function reads(Request $request, Conversation $conversation): JsonResponse
+    public function reads(Request $request, Conversation $conversation, ReadReceiptVisibility $receipts): JsonResponse
     {
         if ($conversation->deleted_at) {
             return response()->json(['data' => ['message' => 'Conversation not found']], 404);
@@ -319,22 +320,18 @@ class ConversationController extends Controller
             ->active()
             ->get(['user_id', 'last_read_message_id', 'last_read_at']);
 
-        // Read receipts work both ways: someone who doesn't share their own
-        // read state doesn't see anyone else's, and nobody sees the read
-        // state of someone who doesn't share it. Their entries stay in the
-        // list, empty, like a member who hasn't read anything yet.
-        $viewerId = $request->user()->id;
-        $viewerShares = UserSettings::for($request->user())->read_receipts;
-        $notSharing = array_flip(UserSettings::withoutReadReceipts($participants->pluck('user_id')->all()));
+        // Read receipts work both ways (see ReadReceiptVisibility). Entries
+        // the viewer may not see stay in the list, empty, like a member who
+        // hasn't read anything yet.
+        $visible = $receipts->forViewer($request->user(), $participants->pluck('user_id')->all())['visible'];
 
-        $pointers = $participants->map(function (ConversationParticipant $participant) use ($viewerId, $viewerShares, $notSharing): array {
-            $visible = $participant->user_id === $viewerId
-                || ($viewerShares && ! isset($notSharing[$participant->user_id]));
+        $pointers = $participants->map(function (ConversationParticipant $participant) use ($visible): array {
+            $shown = isset($visible[$participant->user_id]);
 
             return [
                 'user_id' => $participant->user_id,
-                'last_read_message_id' => $visible ? $participant->last_read_message_id : null,
-                'last_read_at' => $visible ? $participant->last_read_at : null,
+                'last_read_message_id' => $shown ? $participant->last_read_message_id : null,
+                'last_read_at' => $shown ? $participant->last_read_at : null,
             ];
         });
 
