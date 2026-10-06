@@ -82,9 +82,9 @@ apply — see [Local setup](#local-setup)).
 | GET | `/conversations/{id}` | |
 | PATCH | `/conversations/{id}` | rename a group; throttled 20/min |
 | POST | `/conversations/{id}/typing` | current members only; accepted but not broadcast when the sender has typing indicators off; throttled 30/min |
-| POST | `/conversations/{id}/read` | moves the viewer's read pointer to `message_id` (or the newest message without one), never backwards; broadcasts `ConversationRead` when it moves; 403 for a member who left; throttled 30/min |
+| POST | `/conversations/{id}/read` | moves the viewer's read pointer to `message_id` (or the newest message without one), never backwards; when it moves and the viewer shares read receipts, broadcasts `ConversationRead` with their pointer and read stretches; 403 for a member who left; throttled 30/min |
 | PATCH | `/conversations/{id}/preferences` | the viewer's own `pinned` / `muted` / `archived` (booleans, at least one); archiving unpins, pinning unarchives; tells the viewer's other tabs (`ConversationPreferencesUpdated` on their user channel); allowed in a group they left; throttled 30/min |
-| GET | `/conversations/{id}/reads` | every current member's read pointer (`user_id`, `last_read_message_id`, `last_read_at`), for "Seen" / "Seen by"; empty for anyone who doesn't share read receipts, and for everyone when the viewer doesn't; current members only; throttled 60/min |
+| GET | `/conversations/{id}/reads` | what the viewer may see of every current member's reading, for "Seen" / "Seen by": `user_id`, `last_read_message_id`, `last_read_at`, `stretches` (the `[from, to]` ranges of their pointer they read with read receipts on; the last one open, `to: null`, while they share) and `viewer_stretches` (the ranges covered while the viewer had theirs on). A read shows only inside both, so it counts only if both people had read receipts on when it was made, however either switches later. `last_read_message_id` never goes past what the viewer may see; current members only; throttled 60/min |
 
 </details>
 
@@ -94,7 +94,7 @@ apply — see [Local setup](#local-setup)).
 | Method | Endpoint | Notes |
 |---|---|---|
 | GET | `/settings` | the viewer's `read_receipts`, `last_seen_visibility` (`everyone`/`contacts`/`nobody`), `typing_indicators`, `message_sounds`, `desktop_notifications` — defaults until first changed |
-| PATCH | `/settings` | any of the above, at least one; throttled 20/min |
+| PATCH | `/settings` | any of the above, at least one; switching `read_receipts` opens or closes a read stretch in each of the viewer's conversations (for their own pointer and every other member's), so it only affects reads from then on, theirs and others'; throttled 20/min |
 
 Every `last_seen_at` in a response goes through `LastSeenVisibility`: null
 when the person has chosen not to show it to the viewer.
@@ -112,7 +112,7 @@ when the person has chosen not to show it to the viewer.
 | GET | `/messages/search` | Postgres full-text search: `?q=` (2–200 chars), optional `conversation_id` to search one conversation, `sort=relevance` (default) or `recent`, `limit` (max 20 everywhere, 50 in one conversation); returns `meta.total`; only messages the viewer may read (no deleted groups, nothing after they left); throttled 30/min everywhere, 60/min in one conversation |
 | PATCH | `/messages/{id}` | throttled 30/min |
 | DELETE | `/messages/{id}` | redacts, doesn't hard-delete; throttled 30/min |
-| GET | `/messages/{id}/info` | who sent it and when it was sent, edited and deleted; on your own message, who has read it and who hasn't yet (`read_by`, `not_read`, by name, current members only). Both are `null` on someone else's message, and when you've turned read receipts off, with `receipts_hidden` saying so; anyone with them off reads as "not yet". 403 outside the conversation; 404 for a deleted group, past the viewer's leave cutoff, or a group event line; throttled 60/min |
+| GET | `/messages/{id}/info` | who sent it and when it was sent, edited and deleted; on your own message, who has read it and who hasn't yet (`read_by`, `not_read`, by name, current members only). Someone counts as having read it only if both of you had read receipts on when they did; anyone else reads as "not yet". While yours are off, `receipts_off` says so. Both lists are `null` on someone else's message. 403 outside the conversation; 404 for a deleted group, past the viewer's leave cutoff, or a group event line; throttled 60/min |
 | POST | `/attachments` | throttled 30/min |
 | GET | `/attachments/{id}` | resolves a signed URL |
 | POST | `/messages/{id}/reactions` | throttled 60/min |

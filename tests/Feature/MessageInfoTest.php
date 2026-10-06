@@ -114,7 +114,7 @@ test('on your own message, who has read it and who has not yet, by name', functi
     expect($response->json('data.not_read'))->toBe([
         ['user_id' => $bob->id, 'name' => 'bob', 'avatar_url' => null],
     ]);
-    expect($response->json('data.receipts_hidden'))->toBeFalse();
+    expect($response->json('data.receipts_off'))->toBeFalse();
 });
 
 test('reading a later message counts as reading this one, and reading an earlier one does not', function () {
@@ -179,7 +179,7 @@ test('on someone else\'s message there are no lists to show', function () {
 
     expect($response->json('data.read_by'))->toBeNull();
     expect($response->json('data.not_read'))->toBeNull();
-    expect($response->json('data.receipts_hidden'))->toBeFalse();
+    expect($response->json('data.receipts_off'))->toBeFalse();
 });
 
 // They read as "not yet", like anyone who hasn't: the list must not give away
@@ -197,21 +197,25 @@ test('someone who does not share their read state is never listed as having read
     expect(infoNames($response->json('data.not_read')))->toBe(['bob']);
 });
 
-test('a viewer who does not share their own read state gets no lists, and is told why', function () {
+test('while the viewer’s own read receipts are off they still get the lists, and are told so', function () {
     [$alice, $bob, , $conversation] = infoGroup();
     $message = infoMessage($conversation, $alice);
     infoRead($bob, $conversation, $message);
+    // Set directly, as for someone who switched before switches were
+    // recorded: with nothing recorded, all of the history follows the
+    // setting they have now. (Switches that were recorded keep what was
+    // shown before them; see ReadReceiptsAtReadTimeTest.)
     infoSettings($alice, ['read_receipts' => false]);
 
     $response = $this->actingAs($alice)->getJson(infoUrl($message))->assertOk();
 
-    expect($response->json('data.read_by'))->toBeNull();
-    expect($response->json('data.not_read'))->toBeNull();
-    expect($response->json('data.receipts_hidden'))->toBeTrue();
+    expect($response->json('data.read_by'))->toBe([]);
+    expect(infoNames($response->json('data.not_read')))->toBe(['bob', 'Carol']);
+    expect($response->json('data.receipts_off'))->toBeTrue();
 
     // Nothing to explain on a message that never had lists.
     $theirs = $this->actingAs($alice)->getJson(infoUrl(infoMessage($conversation, $bob)))->assertOk();
-    expect($theirs->json('data.receipts_hidden'))->toBeFalse();
+    expect($theirs->json('data.receipts_off'))->toBeFalse();
 });
 
 test('only people still in the conversation are listed', function () {
@@ -237,7 +241,7 @@ test('a member who left still gets the facts of their own old message, but no li
     expect($response->json('data.id'))->toBe($message->id);
     expect($response->json('data.read_by'))->toBeNull();
     expect($response->json('data.not_read'))->toBeNull();
-    expect($response->json('data.receipts_hidden'))->toBeFalse();
+    expect($response->json('data.receipts_off'))->toBeFalse();
 });
 
 test('someone outside the conversation is refused', function () {

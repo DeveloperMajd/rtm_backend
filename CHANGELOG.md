@@ -5,6 +5,55 @@ whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Read receipts count by the settings at the time of reading
+
+- **Changed:** every read is decided when it happens, by both people's
+  "Read receipts" settings at that moment. A read shows to a viewer only if
+  the reader and the viewer both had read receipts on when it was made.
+  Switching only changes what happens from then on, for either of them,
+  however often they switch: what was shown stays shown, and what wasn't
+  never is. Before, the setting applied to everything at once: switching on
+  showed what had been read while it was off, and switching off hid what
+  had already been shown, on both sides.
+- **New:** two lists of stretches on `conversation_participants`, each
+  `[from, to]` positions of a read pointer (`from` exclusive and null for
+  the beginning, `to` inclusive and null while open, running to the
+  pointer):
+  - `receipt_stretches`: the ranges of the person's own pointer that they
+    read with read receipts on;
+  - `viewer_stretches`, keyed by user id: the ranges of each other
+    member's pointer that were covered while the person had read receipts
+    on.
+- **New:** `PATCH /api/settings`, on a read receipts switch, opens a stretch
+  in each of the person's conversations where each pointer stands (theirs,
+  and every other member's), or closes it there. Marking as read writes
+  nothing new: an open stretch runs to wherever the pointer is. The newest
+  20 per list are kept; dropping one hides what it covered and never shows
+  anything.
+- **New:** `GET /api/conversations/{id}/reads` gives each member's
+  `stretches` and the viewer's `viewer_stretches` of them. A message counts
+  as read only inside both (an open one runs to `last_read_message_id`).
+  `last_read_message_id` never goes past what the viewer may see, and
+  `last_read_at` is null when that read isn't one they may see. The
+  `ConversationRead` broadcast carries the reader's `stretches`.
+- **Changed:** `GET /api/messages/{id}/info` lists someone in `read_by` only
+  if both of them had read receipts on when they read it. While the viewer's
+  own are off, the lists are still given (what was read before they
+  switched still shows) and `receipts_off: true` says so. That replaces
+  `receipts_hidden` and its null lists, which were never released.
+
+**Deploy:** two migrations, each adding a nullable `jsonb` column with no
+default: a catalogue change, no table rewrite. Nothing is backfilled. A list
+that isn't there yet follows its person's current setting for all of its
+history, which is what everyone is shown today, so nobody's screen changes
+when this ships; the difference appears the next time someone switches.
+
+**Compatibility:** additive. For a client that doesn't know about
+stretches, `last_read_message_id` keeps its meaning: where the reading the
+viewer may see ends. Such a client treats everything up to there as read,
+so after someone switches off and on it can show messages read while off,
+until it's updated.
+
 ### Message info
 
 - **New:** `GET /api/messages/{id}/info` returns what there is to know about
@@ -24,8 +73,9 @@ whether a client already in the field keeps working.
 - **Enforced:** read receipts, both ways, as `GET /reads` does.
   - Someone who has them off is never in `read_by`. They are in `not_read`,
     like anyone who hasn't read it yet.
-  - A viewer who has them off gets both lists as `null`, and
-    `receipts_hidden: true` to say why.
+  - A viewer with their own off is told so with `receipts_off: true`.
+  - (Refined by "Read receipts count by the settings at the time of
+    reading", above.)
 - **Internal:** the rule for whose read state a viewer may see is now
   `ReadReceiptVisibility`, used by `GET /reads` and by this endpoint so the
   two can't drift apart. `GET /reads` answers exactly as before.

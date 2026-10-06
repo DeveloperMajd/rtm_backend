@@ -293,9 +293,16 @@ class ConversationController extends Controller
     }
 
     /**
-     * Where everyone still in the conversation has read up to — what turns
-     * "Sent" into "Seen" and fills the group's "Seen by" list. Pointers only:
-     * the client compares them with its own messages' ids.
+     * What the viewer may see of everyone's reading — what turns "Sent" into
+     * "Seen" and fills the group's "Seen by" list. A read shows only if both
+     * of them had read receipts on when it happened: each member's
+     * `stretches` say what they read while sharing, and `viewer_stretches`
+     * what of their reading happened while the viewer was sharing. The
+     * client compares both with its own messages' ids, up to
+     * `last_read_message_id` (see ReadReceiptVisibility::covers()). For
+     * people who have never switched read receipts each list is a single
+     * stretch from the start, so the pointer alone still says it all, as it
+     * did before stretches.
      *
      * For current members only. Someone who left sees the conversation as it
      * was when they left, and how far the others have read since isn't part
@@ -318,22 +325,17 @@ class ConversationController extends Controller
 
         $participants = $conversation->participants()
             ->active()
-            ->get(['user_id', 'last_read_message_id', 'last_read_at']);
+            ->get(['user_id', 'last_read_message_id', 'last_read_at', 'receipt_stretches', 'viewer_stretches']);
 
-        // Read receipts work both ways (see ReadReceiptVisibility). Entries
-        // the viewer may not see stay in the list, empty, like a member who
-        // hasn't read anything yet.
-        $visible = $receipts->forViewer($request->user(), $participants->pluck('user_id')->all())['visible'];
+        // Each read counts by both people's settings when it was made (see
+        // ReadReceiptVisibility). What the viewer may not see reads like a
+        // member who hasn't read anything yet.
+        $reads = $receipts->forViewer($request->user(), $participants)['reads'];
 
-        $pointers = $participants->map(function (ConversationParticipant $participant) use ($visible): array {
-            $shown = isset($visible[$participant->user_id]);
-
-            return [
-                'user_id' => $participant->user_id,
-                'last_read_message_id' => $shown ? $participant->last_read_message_id : null,
-                'last_read_at' => $shown ? $participant->last_read_at : null,
-            ];
-        });
+        $pointers = $participants->map(fn (ConversationParticipant $participant): array => [
+            'user_id' => $participant->user_id,
+            ...$reads[$participant->user_id],
+        ]);
 
         return response()->json(['data' => $pointers->values()]);
     }

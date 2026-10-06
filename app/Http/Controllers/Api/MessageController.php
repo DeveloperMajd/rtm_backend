@@ -242,14 +242,16 @@ class MessageController extends Controller
      * pointer last moved, not when they read this message, so there is no
      * honest time to put beside a name.
      *
-     * The lists follow the "Read receipts" setting both ways, as GET /reads
-     * does (see ReadReceiptVisibility). Someone who doesn't share is never in
-     * `read_by`, whatever their pointer says; they read as "not yet", like
-     * anyone who hasn't read it. A viewer who doesn't share their own gets no
-     * lists and `receipts_hidden`, to say why. Both lists are null on
-     * someone else's message, and for a viewer who has left, whose view of
-     * the conversation stops where they did. Only people still in the
-     * conversation are listed.
+     * The lists follow the "Read receipts" setting as GET /reads does (see
+     * ReadReceiptVisibility). Someone is in `read_by` only if, when they read
+     * the message, both they and the viewer had read receipts on. A read
+     * made while either had them off never counts, however either has
+     * switched since, and reads as "not yet", like anyone who hasn't read it.
+     * While the viewer's own are off, `receipts_off` says so: what was read
+     * before they switched still shows, and nothing read since will. Both
+     * lists are null on someone else's message, and for a viewer who has
+     * left, whose view of the conversation stops where they did. Only people
+     * still in the conversation are listed.
      *
      * The same gate as the history endpoints: 403 outside the conversation,
      * and 404 for a deleted group, for a message after the viewer left, and
@@ -271,29 +273,24 @@ class MessageController extends Controller
 
         $readBy = null;
         $notRead = null;
-        $receiptsHidden = false;
+        $receiptsOff = false;
 
         if ($message->sender_user_id === $viewer->id) {
             $members = $conversation->participants()->active()->with('user:id,name,avatar_url')->get();
 
             if ($members->contains('user_id', $viewer->id)) {
-                $others = $members->where('user_id', '!=', $viewer->id);
-                $audience = $receipts->forViewer($viewer, $others->pluck('user_id')->all());
-                $receiptsHidden = ! $audience['viewer_shares'];
+                ['viewer_shares' => $viewerShares, 'reads' => $reads] = $receipts->forViewer($viewer, $members);
+                $receiptsOff = ! $viewerShares;
 
-                if (! $receiptsHidden) {
-                    // Pointers only move forward past everything before them,
-                    // so reading a later message counts as reading this one.
-                    // Ids are UUIDv7: they order by time as strings.
-                    [$read, $notYet] = $others->partition(
-                        fn (ConversationParticipant $member): bool => isset($audience['visible'][$member->user_id])
-                            && $member->last_read_message_id !== null
-                            && strcmp($member->last_read_message_id, $message->id) >= 0
-                    );
+                // A pointer moves forward past everything before it, so
+                // reading a later message counts as reading this one, as long
+                // as that read could be shown.
+                [$read, $notYet] = $members
+                    ->where('user_id', '!=', $viewer->id)
+                    ->partition(fn (ConversationParticipant $member): bool => ReadReceiptVisibility::covers($reads[$member->user_id], $message->id));
 
-                    $readBy = $this->people($read);
-                    $notRead = $this->people($notYet);
-                }
+                $readBy = $this->people($read);
+                $notRead = $this->people($notYet);
             }
         }
 
@@ -311,7 +308,7 @@ class MessageController extends Controller
             'deleted_at' => $message->deleted_at,
             'read_by' => $readBy,
             'not_read' => $notRead,
-            'receipts_hidden' => $receiptsHidden,
+            'receipts_off' => $receiptsOff,
         ]]);
     }
 

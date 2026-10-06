@@ -29,6 +29,8 @@ class ConversationParticipant extends Model
         'pinned_at',
         'muted_at',
         'archived_at',
+        'receipt_stretches',
+        'viewer_stretches',
     ];
 
     /**
@@ -43,6 +45,8 @@ class ConversationParticipant extends Model
             'pinned_at' => 'datetime',
             'muted_at' => 'datetime',
             'archived_at' => 'datetime',
+            'receipt_stretches' => 'array',
+            'viewer_stretches' => 'array',
         ];
     }
 
