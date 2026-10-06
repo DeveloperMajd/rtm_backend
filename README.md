@@ -112,6 +112,7 @@ when the person has chosen not to show it to the viewer.
 | GET | `/messages/search` | Postgres full-text search: `?q=` (2–200 chars), optional `conversation_id` to search one conversation, `sort=relevance` (default) or `recent`, `limit` (max 20 everywhere, 50 in one conversation); returns `meta.total`; only messages the viewer may read (no deleted groups, nothing after they left); throttled 30/min everywhere, 60/min in one conversation |
 | PATCH | `/messages/{id}` | throttled 30/min |
 | DELETE | `/messages/{id}` | redacts, doesn't hard-delete; throttled 30/min |
+| GET | `/messages/{id}/info` | who sent it and when it was sent, edited and deleted; on your own message, who has read it and who hasn't yet (`read_by`, `not_read`, by name, current members only). Both are `null` on someone else's message, and when you've turned read receipts off, with `receipts_hidden` saying so; anyone with them off reads as "not yet". 403 outside the conversation; 404 for a deleted group, past the viewer's leave cutoff, or a group event line; throttled 60/min |
 | POST | `/attachments` | throttled 30/min |
 | GET | `/attachments/{id}` | resolves a signed URL |
 | POST | `/messages/{id}/reactions` | throttled 60/min |

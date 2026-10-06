@@ -5,6 +5,35 @@ whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Message info
+
+- **New:** `GET /api/messages/{id}/info` returns what there is to know about
+  one message: `sender`, `sent_at`, `edited_at` and `deleted_at` and, on the
+  viewer's own messages, `read_by` and `not_read`. Each is a list of
+  `user_id`, `name` and `avatar_url`, in name order.
+  - Only people still in the conversation are listed, and never the viewer.
+  - Someone has read it once their pointer has reached it, so reading a
+    later message counts.
+  - There is no time beside a name. The server knows when a pointer last
+    moved, not when its owner read this message.
+  - Both lists are `null` on someone else's message, and for a viewer who
+    has left.
+  - It answers 403 outside the conversation, and 404 for a deleted group,
+    for a message after the viewer left, and for a group event line.
+  - Throttled to 60 a minute.
+- **Enforced:** read receipts, both ways, as `GET /reads` does.
+  - Someone who has them off is never in `read_by`. They are in `not_read`,
+    like anyone who hasn't read it yet.
+  - A viewer who has them off gets both lists as `null`, and
+    `receipts_hidden: true` to say why.
+- **Internal:** the rule for whose read state a viewer may see is now
+  `ReadReceiptVisibility`, used by `GET /reads` and by this endpoint so the
+  two can't drift apart. `GET /reads` answers exactly as before.
+
+**Deploy:** no migration.
+
+**Compatibility:** additive. A new endpoint; nothing existing changes.
+
 ### Notification and privacy settings
 
 - **New:** a `user_settings` table with one row per person:
