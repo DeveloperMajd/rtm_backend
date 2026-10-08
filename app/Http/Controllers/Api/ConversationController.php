@@ -167,20 +167,19 @@ class ConversationController extends Controller
     public function typing(Request $request, Conversation $conversation): Response
     {
         // Current members only: someone who left can't write to the group,
-        // so they can't be shown writing to it either.
-        $isActiveParticipant = $conversation->participants()
-            ->where('user_id', $request->user()->id)
-            ->whereNull('left_at')
-            ->exists();
+        // so they can't be shown writing to it either. The same one query
+        // gives the others, whose chat lists are told too.
+        $memberIds = $conversation->participants()->whereNull('left_at')->pluck('user_id');
 
-        if (! $isActiveParticipant) {
+        if (! $memberIds->contains($request->user()->id)) {
             return response()->noContent(403);
         }
 
         // Someone who has turned typing indicators off isn't shown typing:
         // accepted, so their client needn't care, and nothing is sent.
         if (UserSettings::for($request->user())->typing_indicators) {
-            broadcast(new TypingIndicator($conversation->id, $request->user()));
+            $others = $memberIds->reject(fn (string $userId): bool => $userId === $request->user()->id)->values()->all();
+            broadcast(new TypingIndicator($conversation->id, $request->user(), $others));
         }
 
         return response()->noContent();

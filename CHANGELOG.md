@@ -5,6 +5,24 @@ whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Typing in the chat list
+
+- **Changed:** `TypingIndicator` is broadcast to each other current member's
+  own channel (`App.Models.User.{id}`) as well as to the conversation, so a
+  chat list can show who's typing on a conversation that isn't open. It's
+  still one broadcast: Reverb gets every channel in the one call. Never to
+  the typist, nor to someone who has left.
+- **New:** its payload carries `conversation_id` beside `user_id` and
+  `name`.
+- **Internal:** the typing endpoint fetches the current members once, both
+  to check the sender is one and to address the others; it costs the same
+  few queries however big the group is. Typing still never touches Redis.
+
+**Deploy:** no migration.
+
+**Compatibility:** additive. A client that only listens on the
+conversation channel sees what it always did, plus a field it can ignore.
+
 ### Bio in a direct conversation
 
 - **New:** a direct conversation's `other_participant` carries their `bio`
