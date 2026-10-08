@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\MessageReactionController;
 use App\Http\Controllers\Api\PasswordResetController;
 use App\Http\Controllers\Api\PresenceController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\SavedMessageController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\SocialAuthController;
 use Illuminate\Support\Facades\Route;
@@ -60,13 +61,22 @@ Route::middleware(['web', 'auth:sanctum'])->group(function () {
         Route::get('/messages/search', 'search')->middleware('throttle:messages.search');
         Route::patch('/messages/{message}', 'update')->middleware('throttle:30,1,messages.update.');
         Route::delete('/messages/{message}', 'destroy')->middleware('throttle:30,1,messages.destroy.');
+        Route::get('/messages/{message}/info', 'info')->middleware('throttle:60,1,messages.info.');
         Route::get('/conversations/{conversation}/messages', 'index');
         Route::get('/conversations/{conversation}/messages/{message}/context', 'context')->middleware('throttle:60,1,messages.context.');
+    });
+
+    Route::controller(SavedMessageController::class)->group(function () {
+        Route::get('/saved-messages', 'index')->middleware('throttle:60,1,saved.index.');
+        Route::get('/saved-messages/ids', 'ids')->middleware('throttle:30,1,saved.ids.');
+        Route::post('/messages/{message}/save', 'store')->middleware('throttle:60,1,saved.store.');
+        Route::delete('/messages/{message}/save', 'destroy')->middleware('throttle:60,1,saved.destroy.');
     });
 
     Route::controller(AttachmentController::class)->group(function () {
         Route::post('/attachments', 'store')->middleware('throttle:30,1,attachments.store.');
         Route::get('/attachments/{attachment}', 'show');
+        Route::get('/conversations/{conversation}/attachments', 'index')->middleware('throttle:60,1,attachments.index.');
     });
 
     Route::prefix('messages/{message}/reactions')->controller(MessageReactionController::class)->group(function () {

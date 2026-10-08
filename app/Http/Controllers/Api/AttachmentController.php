@@ -2,19 +2,84 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\GuardsConversationHistory;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\SharedAttachmentsRequest;
 use App\Http\Requests\StoreAttachmentRequest;
 use App\Http\Resources\AttachmentResource;
+use App\Http\Resources\SharedAttachmentResource;
 use App\Models\Attachment;
+use App\Models\Conversation;
+use App\Models\Message;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AttachmentController extends Controller
 {
+    use GuardsConversationHistory;
+
+    /**
+     * A conversation's shared media for its info panel: the photos
+     * (`kind=media`) or the other files (`kind=files`), newest first, up to
+     * `limit` at a time (12 by default, 50 at most) and older than
+     * `before_id`, with `meta.total` counting them all.
+     *
+     * Only what the viewer can see in the history (Message::visibleTo), so
+     * a member who left gets what was sent up to then, and nothing from a
+     * message deleted since, whose attachments the history doesn't show
+     * either. Uploads not yet sent aren't in any conversation.
+     *
+     * 403 outside the conversation, 404 for a deleted group, as the history.
+     */
+    public function index(SharedAttachmentsRequest $request, Conversation $conversation): AnonymousResourceCollection|JsonResponse
+    {
+        if ($denied = $this->denyUnlessReadable($request, $conversation)) {
+            return $denied;
+        }
+
+        $limit = max(1, min((int) $request->query('limit', 12), 50));
+        $beforeId = $request->validated('before_id');
+
+        $visibleMessages = Message::query()
+            ->visibleTo($request->user())
+            ->where('conversation_id', $conversation->id)
+            ->whereNull('deleted_at')
+            ->select('id');
+
+        $shared = Attachment::query()
+            ->whereIn('message_id', $visibleMessages)
+            ->where('mime_type', $request->wantsMedia() ? 'like' : 'not like', 'image/%');
+
+        $total = (clone $shared)->count();
+
+        // Ordered by id, a UUIDv7, so newest first; and, as with the history,
+        // one row past the limit answers "is there more?".
+        $page = $shared
+            ->when($beforeId !== null, fn (Builder $query): Builder => $query->where('id', '<', $beforeId))
+            ->with('message.sender:id,name,avatar_url')
+            ->latest('id')
+            ->limit($limit + 1)
+            ->get();
+
+        $hasMore = $page->count() > $limit;
+        $page = $page->take($limit)->values();
+
+        return SharedAttachmentResource::collection($page)
+            ->additional([
+                'meta' => [
+                    'total' => $total,
+                    'has_more' => $hasMore,
+                    'next_before_id' => $hasMore ? $page->last()?->id : null,
+                ],
+            ]);
+    }
+
     public function store(StoreAttachmentRequest $request): JsonResponse
     {
         $file = $request->file('file');

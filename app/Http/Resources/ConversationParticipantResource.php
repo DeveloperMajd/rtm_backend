@@ -16,6 +16,8 @@ class ConversationParticipantResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $status = app(PresenceService::class)->statusOf($this->user_id);
+
         return [
             'user_id' => $this->user_id,
             'name' => $this->user?->name,
@@ -23,7 +25,8 @@ class ConversationParticipantResource extends JsonResource
             'role' => $this->role,
             'joined_at' => $this->joined_at,
             'left_at' => $this->left_at,
-            'is_online' => app(PresenceService::class)->isOnline($this->user_id),
+            'is_online' => $status->isOnline(),
+            'presence_status' => $status,
             'last_seen_at' => app(LastSeenVisibility::class)->lastSeenFor($request->user(), $this->user),
         ];
     }

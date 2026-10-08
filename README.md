@@ -32,6 +32,8 @@ for the project overview and architecture diagram, or the
   emoji reactions
 - PostgreSQL `tsvector` full-text search across message history, weighted
   by relevance
+- Saved messages: a private list of messages to find again, anyone's or
+  your own, shown only while their conversation is still yours
 - Group admin model: multiple admins, promote/demote, admin-gated
   add/kick, a sole admin can't leave without promoting someone first
 - Left/kicked participants keep their row (not deleted) with a
@@ -44,8 +46,10 @@ for the project overview and architecture diagram, or the
   path
 - Personal contacts (a directory you build, not "every user on the site")
   — adding a contact creates the direct conversation immediately
-- Presence + typing indicators, entirely Redis-backed — this state never
-  touches Postgres
+- Presence (online, away once the app has been left idle, offline) +
+  typing indicators, entirely Redis-backed — this state never touches
+  Postgres. Away is the heartbeat key's value, so it costs no Redis
+  command of its own
 - Password policy (`Password::defaults()`) with a HaveIBeenPwned check in
   production only (never in tests/CI, which have no network access), plus
   a full forgot/reset-password flow
@@ -77,14 +81,14 @@ apply — see [Local setup](#local-setup)).
 
 | Method | Endpoint | Notes |
 |---|---|---|
-| GET | `/conversations` | pinned first, then most recent activity; each carries the viewer's own `pinned_at`, `muted_at`, `archived_at` (archived ones are included — the client keeps them aside) |
+| GET | `/conversations` | pinned first, then most recent activity; each carries the viewer's own `pinned_at`, `muted_at`, `archived_at` (archived ones are included — the client keeps them aside), and a direct one the other person as `other_participant`, with their `bio` |
 | POST | `/conversations` | throttled 10/min |
 | GET | `/conversations/{id}` | |
 | PATCH | `/conversations/{id}` | rename a group; throttled 20/min |
-| POST | `/conversations/{id}/typing` | current members only; accepted but not broadcast when the sender has typing indicators off; throttled 30/min |
-| POST | `/conversations/{id}/read` | moves the viewer's read pointer to `message_id` (or the newest message without one), never backwards; broadcasts `ConversationRead` when it moves; 403 for a member who left; throttled 30/min |
+| POST | `/conversations/{id}/typing` | current members only; broadcast as `TypingIndicator` (`conversation_id`, `user_id`, `name`) to the conversation and to each other current member's own channel, in one broadcast, so their chat lists show it too; accepted but not broadcast when the sender has typing indicators off; throttled 30/min |
+| POST | `/conversations/{id}/read` | moves the viewer's read pointer to `message_id` (or the newest message without one), never backwards; when it moves and the viewer shares read receipts, broadcasts `ConversationRead` with their pointer and read stretches; 403 for a member who left; throttled 30/min |
 | PATCH | `/conversations/{id}/preferences` | the viewer's own `pinned` / `muted` / `archived` (booleans, at least one); archiving unpins, pinning unarchives; tells the viewer's other tabs (`ConversationPreferencesUpdated` on their user channel); allowed in a group they left; throttled 30/min |
-| GET | `/conversations/{id}/reads` | every current member's read pointer (`user_id`, `last_read_message_id`, `last_read_at`), for "Seen" / "Seen by"; empty for anyone who doesn't share read receipts, and for everyone when the viewer doesn't; current members only; throttled 60/min |
+| GET | `/conversations/{id}/reads` | what the viewer may see of every current member's reading, for "Seen" / "Seen by": `user_id`, `last_read_message_id`, `last_read_at`, `stretches` (the `[from, to]` ranges of their pointer they read with read receipts on; the last one open, `to: null`, while they share) and `viewer_stretches` (the ranges covered while the viewer had theirs on). A read shows only inside both, so it counts only if both people had read receipts on when it was made, however either switches later. `last_read_message_id` never goes past what the viewer may see; current members only; throttled 60/min |
 
 </details>
 
@@ -94,7 +98,7 @@ apply — see [Local setup](#local-setup)).
 | Method | Endpoint | Notes |
 |---|---|---|
 | GET | `/settings` | the viewer's `read_receipts`, `last_seen_visibility` (`everyone`/`contacts`/`nobody`), `typing_indicators`, `message_sounds`, `desktop_notifications` — defaults until first changed |
-| PATCH | `/settings` | any of the above, at least one; throttled 20/min |
+| PATCH | `/settings` | any of the above, at least one; switching `read_receipts` opens or closes a read stretch in each of the viewer's conversations (for their own pointer and every other member's), so it only affects reads from then on, theirs and others'; throttled 20/min |
 
 Every `last_seen_at` in a response goes through `LastSeenVisibility`: null
 when the person has chosen not to show it to the viewer.
@@ -112,10 +116,24 @@ when the person has chosen not to show it to the viewer.
 | GET | `/messages/search` | Postgres full-text search: `?q=` (2–200 chars), optional `conversation_id` to search one conversation, `sort=relevance` (default) or `recent`, `limit` (max 20 everywhere, 50 in one conversation); returns `meta.total`; only messages the viewer may read (no deleted groups, nothing after they left); throttled 30/min everywhere, 60/min in one conversation |
 | PATCH | `/messages/{id}` | throttled 30/min |
 | DELETE | `/messages/{id}` | redacts, doesn't hard-delete; throttled 30/min |
+| GET | `/messages/{id}/info` | who sent it and when it was sent, edited and deleted; on your own message, who has read it and who hasn't yet (`read_by`, `not_read`, by name, current members only). Someone counts as having read it only if both of you had read receipts on when they did; anyone else reads as "not yet". While yours are off, `receipts_off` says so. Both lists are `null` on someone else's message. 403 outside the conversation; 404 for a deleted group, past the viewer's leave cutoff, or a group event line; throttled 60/min |
 | POST | `/attachments` | throttled 30/min |
 | GET | `/attachments/{id}` | resolves a signed URL |
+| GET | `/conversations/{id}/attachments` | shared media for the info panel: `?kind=media` (photos) or `files` (everything else), newest first, each with its `sender` and `sent_at`; `?before_id=` (an attachment's id) pages back, `limit` default 12, max 50, with `meta.total`, `meta.has_more`, `meta.next_before_id`. Only what the viewer can see in the history: nothing from a deleted message, and for a member who left, nothing sent after; 403 outside the conversation, 404 for a deleted group; throttled 60/min |
 | POST | `/messages/{id}/reactions` | throttled 60/min |
 | DELETE | `/messages/{id}/reactions/{reaction}` | throttled 60/min |
+
+</details>
+
+<details>
+<summary><strong>Saved messages</strong></summary>
+
+| Method | Endpoint | Notes |
+|---|---|---|
+| GET | `/saved-messages` | what the viewer has saved, most recently saved first: `id`, `saved_at`, the `message` and its `conversation` (`id`, `type`, `title`: the group's, or the other person's name); `?before_id=` (a save's id) pages back, `limit` default 30, max 50, with `meta.has_more` and `meta.next_before_id`. Only messages in conversations still the viewer's: nothing from a group they left or were removed from, a deleted group, or a message deleted since (the rows are kept, and show again if they're added back); throttled 60/min |
+| GET | `/saved-messages/ids` | the ids of every message the viewer has saved, for the message menu; throttled 30/min |
+| POST | `/messages/{id}/save` | saves a message, the viewer's own or anyone's; saving it again changes nothing; 204. 403 in a conversation the viewer isn't in, or isn't in any more; 404 for a deleted group, a group event line or a deleted message; throttled 60/min |
+| DELETE | `/messages/{id}/save` | takes it off the viewer's list, whether or not it was on it; 204. Allowed wherever the viewer has a place in the conversation, even after leaving; 403 for anyone else; throttled 60/min |
 
 </details>
 
@@ -146,7 +164,7 @@ when the person has chosen not to show it to the viewer.
 | PATCH | `/profile/password` | throttled 5/min |
 | POST | `/profile/avatar` | throttled 10/min |
 | DELETE | `/profile/avatar` | |
-| POST | `/presence/heartbeat` | throttled 20/min |
+| POST | `/presence/heartbeat` | online for the next 30s; optional `state`: `active` (the default) or `away` (the app is open but idle), which people see as `presence_status: away` while `is_online` stays true; throttled 20/min |
 | POST | `/presence/leave` | |
 
 </details>
@@ -258,7 +276,7 @@ reasoning.
 believable given how *any* command counts against it, including a 30s
 presence heartbeat per active tab — and this time it took `/api/
 conversations` down with it. `ConversationResource` calls
-`PresenceService::onlineUserIds()` unconditionally to compute each
+`PresenceService::onlineUserIds()` (now `statusesOf()`) unconditionally to compute each
 participant's online dot, and that call had no error handling, so a
 Redis outage 500'd every conversations-list load, not just presence
 itself. Presence is ephemeral, non-critical data by design, so it should

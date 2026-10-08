@@ -19,6 +19,7 @@ use App\Models\UserSettings;
 use App\Services\ConversationParticipantService;
 use App\Services\ConversationService;
 use App\Services\LastSeenVisibility;
+use App\Services\ReadReceiptVisibility;
 use App\Services\SystemMessageService;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\JsonResponse;
@@ -166,20 +167,19 @@ class ConversationController extends Controller
     public function typing(Request $request, Conversation $conversation): Response
     {
         // Current members only: someone who left can't write to the group,
-        // so they can't be shown writing to it either.
-        $isActiveParticipant = $conversation->participants()
-            ->where('user_id', $request->user()->id)
-            ->whereNull('left_at')
-            ->exists();
+        // so they can't be shown writing to it either. The same one query
+        // gives the others, whose chat lists are told too.
+        $memberIds = $conversation->participants()->whereNull('left_at')->pluck('user_id');
 
-        if (! $isActiveParticipant) {
+        if (! $memberIds->contains($request->user()->id)) {
             return response()->noContent(403);
         }
 
         // Someone who has turned typing indicators off isn't shown typing:
         // accepted, so their client needn't care, and nothing is sent.
         if (UserSettings::for($request->user())->typing_indicators) {
-            broadcast(new TypingIndicator($conversation->id, $request->user()));
+            $others = $memberIds->reject(fn (string $userId): bool => $userId === $request->user()->id)->values()->all();
+            broadcast(new TypingIndicator($conversation->id, $request->user(), $others));
         }
 
         return response()->noContent();
@@ -292,15 +292,22 @@ class ConversationController extends Controller
     }
 
     /**
-     * Where everyone still in the conversation has read up to — what turns
-     * "Sent" into "Seen" and fills the group's "Seen by" list. Pointers only:
-     * the client compares them with its own messages' ids.
+     * What the viewer may see of everyone's reading — what turns "Sent" into
+     * "Seen" and fills the group's "Seen by" list. A read shows only if both
+     * of them had read receipts on when it happened: each member's
+     * `stretches` say what they read while sharing, and `viewer_stretches`
+     * what of their reading happened while the viewer was sharing. The
+     * client compares both with its own messages' ids, up to
+     * `last_read_message_id` (see ReadReceiptVisibility::covers()). For
+     * people who have never switched read receipts each list is a single
+     * stretch from the start, so the pointer alone still says it all, as it
+     * did before stretches.
      *
      * For current members only. Someone who left sees the conversation as it
      * was when they left, and how far the others have read since isn't part
      * of that.
      */
-    public function reads(Request $request, Conversation $conversation): JsonResponse
+    public function reads(Request $request, Conversation $conversation, ReadReceiptVisibility $receipts): JsonResponse
     {
         if ($conversation->deleted_at) {
             return response()->json(['data' => ['message' => 'Conversation not found']], 404);
@@ -317,26 +324,17 @@ class ConversationController extends Controller
 
         $participants = $conversation->participants()
             ->active()
-            ->get(['user_id', 'last_read_message_id', 'last_read_at']);
+            ->get(['user_id', 'last_read_message_id', 'last_read_at', 'receipt_stretches', 'viewer_stretches']);
 
-        // Read receipts work both ways: someone who doesn't share their own
-        // read state doesn't see anyone else's, and nobody sees the read
-        // state of someone who doesn't share it. Their entries stay in the
-        // list, empty, like a member who hasn't read anything yet.
-        $viewerId = $request->user()->id;
-        $viewerShares = UserSettings::for($request->user())->read_receipts;
-        $notSharing = array_flip(UserSettings::withoutReadReceipts($participants->pluck('user_id')->all()));
+        // Each read counts by both people's settings when it was made (see
+        // ReadReceiptVisibility). What the viewer may not see reads like a
+        // member who hasn't read anything yet.
+        $reads = $receipts->forViewer($request->user(), $participants)['reads'];
 
-        $pointers = $participants->map(function (ConversationParticipant $participant) use ($viewerId, $viewerShares, $notSharing): array {
-            $visible = $participant->user_id === $viewerId
-                || ($viewerShares && ! isset($notSharing[$participant->user_id]));
-
-            return [
-                'user_id' => $participant->user_id,
-                'last_read_message_id' => $visible ? $participant->last_read_message_id : null,
-                'last_read_at' => $visible ? $participant->last_read_at : null,
-            ];
-        });
+        $pointers = $participants->map(fn (ConversationParticipant $participant): array => [
+            'user_id' => $participant->user_id,
+            ...$reads[$participant->user_id],
+        ]);
 
         return response()->json(['data' => $pointers->values()]);
     }

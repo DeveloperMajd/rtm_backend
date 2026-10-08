@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Enums\PresenceStatus;
 use App\Models\Message;
 use App\Services\LastSeenVisibility;
 use App\Services\PresenceService;
@@ -17,9 +18,10 @@ class ConversationResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $onlineUserIds = $this->relationLoaded('participants')
-            ? app(PresenceService::class)->onlineUserIds($this->participants->pluck('user_id')->all())
+        $statuses = $this->relationLoaded('participants')
+            ? app(PresenceService::class)->statusesOf($this->participants->pluck('user_id')->all())
             : [];
+        $statusOf = fn (string $userId): PresenceStatus => $statuses[$userId] ?? PresenceStatus::Offline;
 
         $viewerParticipant = $this->relationLoaded('participants')
             ? $this->participants->firstWhere('user_id', $request->user()->id)
@@ -39,14 +41,18 @@ class ConversationResource extends JsonResource
             'viewer_left_at' => $viewerLeftAt,
             'other_participant' => $this->when(
                 $this->type === 'direct' && $this->relationLoaded('participants'),
-                function () use ($request, $onlineUserIds) {
+                function () use ($request, $statusOf) {
                     $other = $this->participants->first(fn ($p) => $p->user_id !== $request->user()->id);
 
                     return $other ? [
                         'id' => $other->user_id,
                         'name' => $other->user?->name,
                         'avatar_url' => $other->user?->avatar_url,
-                        'is_online' => in_array($other->user_id, $onlineUserIds, true),
+                        // What they've written about themselves, for anyone
+                        // they share a conversation with, as their name is.
+                        'bio' => $other->user?->bio,
+                        'is_online' => $statusOf($other->user_id)->isOnline(),
+                        'presence_status' => $statusOf($other->user_id),
                         'last_seen_at' => app(LastSeenVisibility::class)->lastSeenFor($request->user(), $other->user),
                     ] : null;
                 },
@@ -55,14 +61,15 @@ class ConversationResource extends JsonResource
                 $this->relationLoaded('participants'),
                 fn () => $this->resolveLatestMessage($viewerParticipant?->left_at_message_id),
             ),
-            'participants' => $this->whenLoaded('participants', function () use ($onlineUserIds, $request) {
+            'participants' => $this->whenLoaded('participants', function () use ($statusOf, $request) {
                 return $this->participants->map(fn ($p) => [
                     'user_id' => $p->user_id,
                     'name' => $p->user?->name,
                     'avatar_url' => $p->user?->avatar_url,
                     'role' => $p->role,
                     'left_at' => $p->left_at,
-                    'is_online' => in_array($p->user_id, $onlineUserIds, true),
+                    'is_online' => $statusOf($p->user_id)->isOnline(),
+                    'presence_status' => $statusOf($p->user_id),
                     'last_seen_at' => app(LastSeenVisibility::class)->lastSeenFor($request->user(), $p->user),
                 ]);
             }),

@@ -1,9 +1,210 @@
 # Changelog
 
-API and schema changes, newest first. Each entry says what a deploy runs and
-whether a client already in the field keeps working.
+API and schema changes, newest first, under the day each release went live
+(anything not live yet goes under Unreleased, at the top). Each entry says
+what a deploy runs and whether a client already in the field keeps working.
 
-## Unreleased
+## 2026-10-08
+
+### Shared media
+
+- **New:** `GET /api/conversations/{id}/attachments` lists a conversation's
+  shared media for its info panel: the photos (`kind=media`) or the other
+  files (`kind=files`), newest first. Each is the attachment as a message
+  carries it (with a fresh signed `url`), plus who sent it (`sender`) and
+  when (`sent_at`), since the list gathers many messages' attachments.
+  - It pages from `?before_id=` (an attachment's id), `limit` 12 by default
+    and 50 at most, with `meta.has_more` and `meta.next_before_id`, and
+    `meta.total` counts them all.
+  - Only what the viewer can see in the history (`Message::visibleTo`):
+    nothing from a message deleted since, and for a member who left,
+    nothing sent after they did. Uploads not sent yet aren't in any
+    conversation.
+  - 403 outside the conversation and 404 for a deleted group, as the
+    history; a page costs the same few queries however many people sent
+    the photos. Throttled to 60 a minute.
+- **Internal:** the history endpoints' gate (`denyUnlessReadable`) moved
+  from `MessageController` into the `GuardsConversationHistory` trait,
+  which the new endpoint uses too. Nothing it answers changes.
+
+**Deploy:** no migration.
+
+**Compatibility:** additive. A new endpoint.
+
+### Typing in the chat list
+
+- **Changed:** `TypingIndicator` is broadcast to each other current member's
+  own channel (`App.Models.User.{id}`) as well as to the conversation, so a
+  chat list can show who's typing on a conversation that isn't open. It's
+  still one broadcast: Reverb gets every channel in the one call. Never to
+  the typist, nor to someone who has left.
+- **New:** its payload carries `conversation_id` beside `user_id` and
+  `name`.
+- **Internal:** the typing endpoint fetches the current members once, both
+  to check the sender is one and to address the others; it costs the same
+  few queries however big the group is. Typing still never touches Redis.
+
+**Deploy:** no migration.
+
+**Compatibility:** additive. A client that only listens on the
+conversation channel sees what it always did, plus a field it can ignore.
+
+### Bio in a direct conversation
+
+- **New:** a direct conversation's `other_participant` carries their `bio`
+  (null if they haven't written one), for the contact panel. Anyone who
+  shares a conversation with them sees it, as they see their name and
+  avatar.
+
+**Deploy:** no migration.
+
+**Compatibility:** additive. One new field.
+
+### Away presence
+
+- **New:** `POST /api/presence/heartbeat` takes an optional `state`:
+  `active` (the default, and what a heartbeat without one means) or
+  `away`, for an app that's open but has been left idle. Anything else is
+  a 422.
+- **New:** `presence_status` (`online`, `away` or `offline`) beside
+  `is_online` wherever presence is given: a conversation's
+  `other_participant` and `participants`, the participants endpoint, and
+  contacts and contact search. `is_online` is unchanged and stays true
+  while someone is away. Like `is_online`, it isn't hidden by "last seen".
+- **Internal:** the heartbeat's Redis key now holds `active` or `away`
+  instead of a timestamp, and presence is read with GET where it was
+  EXISTS: the same one command per person, so away costs no Redis command
+  of its own (Upstash quota). A key written before this deploy (a
+  timestamp, alive for at most 30 seconds) reads as online. The
+  `PresenceStatus` enum names the three states, and
+  `PresenceService::statusOf()` / `statusesOf()` replace `isOnline()` /
+  `onlineUserIds()`.
+
+**Deploy:** no migration.
+
+**Compatibility:** additive. A client that never sends `state` is always
+online while its heartbeats arrive, as before.
+
+### Saved messages
+
+- **New:** a `saved_messages` table: one row per person and message they've
+  saved, with a UUIDv7 `id` (so ordered by when it was saved),
+  `created_at`, a unique `(user_id, message_id)`, and an index on
+  `(user_id, id)` for the list. A row goes with its message or its person.
+- **New:** `POST /api/messages/{id}/save` saves a message, the viewer's own
+  or anyone's; saving it again changes nothing. `DELETE` on the same path
+  takes it off the list, whether or not it was on it. Both answer 204.
+  - Saving answers 404 for a deleted group, a group event line or a deleted
+    message, and 403 in a conversation the viewer isn't in, or isn't in any
+    more.
+  - Removing touches only the viewer's own row, so it's allowed wherever
+    they have a place in the conversation, even after leaving it or once
+    the message is deleted. Anyone else gets 403.
+  - Each is throttled to 60 a minute, on its own counter.
+- **New:** `GET /api/saved-messages` lists what the viewer has saved, most
+  recently saved first: `id`, `saved_at`, the `message` (as the history
+  shows it, with sender and attachments) and its `conversation` (`id`,
+  `type`, and `title`: the group's, or the other person's name). It pages
+  from `?before_id=` (a save's id), `limit` 30 by default and 50 at most,
+  with `meta.has_more` and `meta.next_before_id`. Throttled to 60 a minute.
+  - Only messages still there for the viewer, in conversations still
+    theirs (`Message::saveableBy`). A group they left or were removed from
+    keeps its saved messages off the list, however early they were, as does
+    a deleted group or a message deleted since. The rows are kept, and show
+    again if the viewer is added back.
+  - A page costs the same few queries however many conversations it spans.
+- **New:** `GET /api/saved-messages/ids` returns the ids of every message the
+  viewer has saved, for the message menu's Save or Remove. Throttled to 30 a
+  minute.
+- Whether a message is saved is the viewer's alone: it isn't on the message
+  resource, whose broadcast copy everyone in the conversation shares, and
+  nothing is broadcast.
+
+**Deploy:** one migration creates `saved_messages`. It's a new table, so
+nothing existing is touched.
+
+**Compatibility:** additive. New endpoints; nothing existing changes.
+
+### Read receipts count by the settings at the time of reading
+
+- **Changed:** every read is decided when it happens, by both people's
+  "Read receipts" settings at that moment. A read shows to a viewer only if
+  the reader and the viewer both had read receipts on when it was made.
+  Switching only changes what happens from then on, for either of them,
+  however often they switch: what was shown stays shown, and what wasn't
+  never is. Before, the setting applied to everything at once: switching on
+  showed what had been read while it was off, and switching off hid what
+  had already been shown, on both sides.
+- **New:** two lists of stretches on `conversation_participants`, each
+  `[from, to]` positions of a read pointer (`from` exclusive and null for
+  the beginning, `to` inclusive and null while open, running to the
+  pointer):
+  - `receipt_stretches`: the ranges of the person's own pointer that they
+    read with read receipts on;
+  - `viewer_stretches`, keyed by user id: the ranges of each other
+    member's pointer that were covered while the person had read receipts
+    on.
+- **New:** `PATCH /api/settings`, on a read receipts switch, opens a stretch
+  in each of the person's conversations where each pointer stands (theirs,
+  and every other member's), or closes it there. Marking as read writes
+  nothing new: an open stretch runs to wherever the pointer is. The newest
+  20 per list are kept; dropping one hides what it covered and never shows
+  anything.
+- **New:** `GET /api/conversations/{id}/reads` gives each member's
+  `stretches` and the viewer's `viewer_stretches` of them. A message counts
+  as read only inside both (an open one runs to `last_read_message_id`).
+  `last_read_message_id` never goes past what the viewer may see, and
+  `last_read_at` is null when that read isn't one they may see. The
+  `ConversationRead` broadcast carries the reader's `stretches`.
+- **Changed:** `GET /api/messages/{id}/info` lists someone in `read_by` only
+  if both of them had read receipts on when they read it. While the viewer's
+  own are off, the lists are still given (what was read before they
+  switched still shows) and `receipts_off: true` says so. That replaces
+  `receipts_hidden` and its null lists, which were never released.
+
+**Deploy:** two migrations, each adding a nullable `jsonb` column with no
+default: a catalogue change, no table rewrite. Nothing is backfilled. A list
+that isn't there yet follows its person's current setting for all of its
+history, which is what everyone is shown today, so nobody's screen changes
+when this ships; the difference appears the next time someone switches.
+
+**Compatibility:** additive. For a client that doesn't know about
+stretches, `last_read_message_id` keeps its meaning: where the reading the
+viewer may see ends. Such a client treats everything up to there as read,
+so after someone switches off and on it can show messages read while off,
+until it's updated.
+
+### Message info
+
+- **New:** `GET /api/messages/{id}/info` returns what there is to know about
+  one message: `sender`, `sent_at`, `edited_at` and `deleted_at` and, on the
+  viewer's own messages, `read_by` and `not_read`. Each is a list of
+  `user_id`, `name` and `avatar_url`, in name order.
+  - Only people still in the conversation are listed, and never the viewer.
+  - Someone has read it once their pointer has reached it, so reading a
+    later message counts.
+  - There is no time beside a name. The server knows when a pointer last
+    moved, not when its owner read this message.
+  - Both lists are `null` on someone else's message, and for a viewer who
+    has left.
+  - It answers 403 outside the conversation, and 404 for a deleted group,
+    for a message after the viewer left, and for a group event line.
+  - Throttled to 60 a minute.
+- **Enforced:** read receipts, both ways, as `GET /reads` does.
+  - Someone who has them off is never in `read_by`. They are in `not_read`,
+    like anyone who hasn't read it yet.
+  - A viewer with their own off is told so with `receipts_off: true`.
+  - (Refined by "Read receipts count by the settings at the time of
+    reading", above.)
+- **Internal:** the rule for whose read state a viewer may see is now
+  `ReadReceiptVisibility`, used by `GET /reads` and by this endpoint so the
+  two can't drift apart. `GET /reads` answers exactly as before.
+
+**Deploy:** no migration.
+
+**Compatibility:** additive. A new endpoint; nothing existing changes.
+
+## 2026-10-05
 
 ### Notification and privacy settings
 
