@@ -81,7 +81,7 @@ apply — see [Local setup](#local-setup)).
 
 | Method | Endpoint | Notes |
 |---|---|---|
-| GET | `/conversations` | pinned first, then most recent activity; each carries the viewer's own `pinned_at`, `muted_at`, `archived_at` (archived ones are included — the client keeps them aside) |
+| GET | `/conversations` | pinned first, then most recent activity; each carries the viewer's own `pinned_at`, `muted_at`, `archived_at` (archived ones are included — the client keeps them aside), and a direct one the other person as `other_participant`, with their `bio` |
 | POST | `/conversations` | throttled 10/min |
 | GET | `/conversations/{id}` | |
 | PATCH | `/conversations/{id}` | rename a group; throttled 20/min |

@@ -5,6 +5,17 @@ whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Bio in a direct conversation
+
+- **New:** a direct conversation's `other_participant` carries their `bio`
+  (null if they haven't written one), for the contact panel. Anyone who
+  shares a conversation with them sees it, as they see their name and
+  avatar.
+
+**Deploy:** no migration.
+
+**Compatibility:** additive. One new field.
+
 ### Away presence
 
 - **New:** `POST /api/presence/heartbeat` takes an optional `state`:

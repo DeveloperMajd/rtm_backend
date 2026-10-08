@@ -48,6 +48,9 @@ class ConversationResource extends JsonResource
                         'id' => $other->user_id,
                         'name' => $other->user?->name,
                         'avatar_url' => $other->user?->avatar_url,
+                        // What they've written about themselves, for anyone
+                        // they share a conversation with, as their name is.
+                        'bio' => $other->user?->bio,
                         'is_online' => $statusOf($other->user_id)->isOnline(),
                         'presence_status' => $statusOf($other->user_id),
                         'last_seen_at' => app(LastSeenVisibility::class)->lastSeenFor($request->user(), $other->user),
