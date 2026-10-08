@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Events\MessageSent;
 use App\Events\MessageUpdated;
+use App\Http\Controllers\Concerns\GuardsConversationHistory;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\MessageContextRequest;
 use App\Http\Requests\MessageHistoryRequest;
@@ -26,6 +27,8 @@ use Illuminate\Support\Collection;
 
 class MessageController extends Controller
 {
+    use GuardsConversationHistory;
+
     public function index(MessageHistoryRequest $request, Conversation $conversation): AnonymousResourceCollection|JsonResponse
     {
         if ($denied = $this->denyUnlessReadable($request, $conversation)) {
@@ -373,28 +376,6 @@ class MessageController extends Controller
 
         return MessageSearchResource::collection($messages)
             ->additional(['meta' => ['total' => $total]]);
-    }
-
-    /**
-     * The history endpoints' shared gate, in the same order and shape as
-     * ConversationController::show(): a deleted group is gone for everyone
-     * (404), and someone who was never in the conversation gets 403. A
-     * member who left passes — they keep read access to the history up to
-     * the moment they left, which readableMessages() enforces.
-     */
-    private function denyUnlessReadable(Request $request, Conversation $conversation): ?JsonResponse
-    {
-        if ($conversation->deleted_at !== null) {
-            return response()->json(['data' => ['message' => 'Conversation not found']], 404);
-        }
-
-        $isParticipant = $conversation->participants()->where('user_id', $request->user()->id)->exists();
-
-        if (! $isParticipant) {
-            return response()->json(['data' => ['message' => 'Forbidden']], 403);
-        }
-
-        return null;
     }
 
     /**

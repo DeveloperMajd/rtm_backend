@@ -5,6 +5,31 @@ whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Shared media
+
+- **New:** `GET /api/conversations/{id}/attachments` lists a conversation's
+  shared media for its info panel: the photos (`kind=media`) or the other
+  files (`kind=files`), newest first. Each is the attachment as a message
+  carries it (with a fresh signed `url`), plus who sent it (`sender`) and
+  when (`sent_at`), since the list gathers many messages' attachments.
+  - It pages from `?before_id=` (an attachment's id), `limit` 12 by default
+    and 50 at most, with `meta.has_more` and `meta.next_before_id`, and
+    `meta.total` counts them all.
+  - Only what the viewer can see in the history (`Message::visibleTo`):
+    nothing from a message deleted since, and for a member who left,
+    nothing sent after they did. Uploads not sent yet aren't in any
+    conversation.
+  - 403 outside the conversation and 404 for a deleted group, as the
+    history; a page costs the same few queries however many people sent
+    the photos. Throttled to 60 a minute.
+- **Internal:** the history endpoints' gate (`denyUnlessReadable`) moved
+  from `MessageController` into the `GuardsConversationHistory` trait,
+  which the new endpoint uses too. Nothing it answers changes.
+
+**Deploy:** no migration.
+
+**Compatibility:** additive. A new endpoint.
+
 ### Typing in the chat list
 
 - **Changed:** `TypingIndicator` is broadcast to each other current member's

@@ -76,6 +76,7 @@ Route::middleware(['web', 'auth:sanctum'])->group(function () {
     Route::controller(AttachmentController::class)->group(function () {
         Route::post('/attachments', 'store')->middleware('throttle:30,1,attachments.store.');
         Route::get('/attachments/{attachment}', 'show');
+        Route::get('/conversations/{conversation}/attachments', 'index')->middleware('throttle:60,1,attachments.index.');
     });
 
     Route::prefix('messages/{message}/reactions')->controller(MessageReactionController::class)->group(function () {

@@ -119,6 +119,7 @@ when the person has chosen not to show it to the viewer.
 | GET | `/messages/{id}/info` | who sent it and when it was sent, edited and deleted; on your own message, who has read it and who hasn't yet (`read_by`, `not_read`, by name, current members only). Someone counts as having read it only if both of you had read receipts on when they did; anyone else reads as "not yet". While yours are off, `receipts_off` says so. Both lists are `null` on someone else's message. 403 outside the conversation; 404 for a deleted group, past the viewer's leave cutoff, or a group event line; throttled 60/min |
 | POST | `/attachments` | throttled 30/min |
 | GET | `/attachments/{id}` | resolves a signed URL |
+| GET | `/conversations/{id}/attachments` | shared media for the info panel: `?kind=media` (photos) or `files` (everything else), newest first, each with its `sender` and `sent_at`; `?before_id=` (an attachment's id) pages back, `limit` default 12, max 50, with `meta.total`, `meta.has_more`, `meta.next_before_id`. Only what the viewer can see in the history: nothing from a deleted message, and for a member who left, nothing sent after; 403 outside the conversation, 404 for a deleted group; throttled 60/min |
 | POST | `/messages/{id}/reactions` | throttled 60/min |
 | DELETE | `/messages/{id}/reactions/{reaction}` | throttled 60/min |
 
