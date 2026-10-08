@@ -1,9 +1,10 @@
 # Changelog
 
-API and schema changes, newest first. Each entry says what a deploy runs and
-whether a client already in the field keeps working.
+API and schema changes, newest first, under the day each release went live
+(anything not live yet goes under Unreleased, at the top). Each entry says
+what a deploy runs and whether a client already in the field keeps working.
 
-## Unreleased
+## 2026-10-08
 
 ### Shared media
 
@@ -202,6 +203,8 @@ until it's updated.
 **Deploy:** no migration.
 
 **Compatibility:** additive. A new endpoint; nothing existing changes.
+
+## 2026-10-05
 
 ### Notification and privacy settings
 
