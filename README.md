@@ -46,8 +46,10 @@ for the project overview and architecture diagram, or the
   path
 - Personal contacts (a directory you build, not "every user on the site")
   — adding a contact creates the direct conversation immediately
-- Presence + typing indicators, entirely Redis-backed — this state never
-  touches Postgres
+- Presence (online, away once the app has been left idle, offline) +
+  typing indicators, entirely Redis-backed — this state never touches
+  Postgres. Away is the heartbeat key's value, so it costs no Redis
+  command of its own
 - Password policy (`Password::defaults()`) with a HaveIBeenPwned check in
   production only (never in tests/CI, which have no network access), plus
   a full forgot/reset-password flow
@@ -161,7 +163,7 @@ when the person has chosen not to show it to the viewer.
 | PATCH | `/profile/password` | throttled 5/min |
 | POST | `/profile/avatar` | throttled 10/min |
 | DELETE | `/profile/avatar` | |
-| POST | `/presence/heartbeat` | throttled 20/min |
+| POST | `/presence/heartbeat` | online for the next 30s; optional `state`: `active` (the default) or `away` (the app is open but idle), which people see as `presence_status: away` while `is_online` stays true; throttled 20/min |
 | POST | `/presence/leave` | |
 
 </details>
@@ -273,7 +275,7 @@ reasoning.
 believable given how *any* command counts against it, including a 30s
 presence heartbeat per active tab — and this time it took `/api/
 conversations` down with it. `ConversationResource` calls
-`PresenceService::onlineUserIds()` unconditionally to compute each
+`PresenceService::onlineUserIds()` (now `statusesOf()`) unconditionally to compute each
 participant's online dot, and that call had no error handling, so a
 Redis outage 500'd every conversations-list load, not just presence
 itself. Presence is ephemeral, non-critical data by design, so it should

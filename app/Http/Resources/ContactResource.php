@@ -17,11 +17,14 @@ class ContactResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $status = app(PresenceService::class)->statusOf($this->id);
+
         return [
             'id' => $this->id,
             'name' => $this->name,
             'avatar_url' => $this->avatar_url,
-            'is_online' => app(PresenceService::class)->isOnline($this->id),
+            'is_online' => $status->isOnline(),
+            'presence_status' => $status,
             'last_seen_at' => app(LastSeenVisibility::class)->lastSeenFor($request->user(), $this->resource),
         ];
     }

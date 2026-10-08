@@ -5,6 +5,31 @@ whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Away presence
+
+- **New:** `POST /api/presence/heartbeat` takes an optional `state`:
+  `active` (the default, and what a heartbeat without one means) or
+  `away`, for an app that's open but has been left idle. Anything else is
+  a 422.
+- **New:** `presence_status` (`online`, `away` or `offline`) beside
+  `is_online` wherever presence is given: a conversation's
+  `other_participant` and `participants`, the participants endpoint, and
+  contacts and contact search. `is_online` is unchanged and stays true
+  while someone is away. Like `is_online`, it isn't hidden by "last seen".
+- **Internal:** the heartbeat's Redis key now holds `active` or `away`
+  instead of a timestamp, and presence is read with GET where it was
+  EXISTS: the same one command per person, so away costs no Redis command
+  of its own (Upstash quota). A key written before this deploy (a
+  timestamp, alive for at most 30 seconds) reads as online. The
+  `PresenceStatus` enum names the three states, and
+  `PresenceService::statusOf()` / `statusesOf()` replace `isOnline()` /
+  `onlineUserIds()`.
+
+**Deploy:** no migration.
+
+**Compatibility:** additive. A client that never sends `state` is always
+online while its heartbeats arrive, as before.
+
 ### Saved messages
 
 - **New:** a `saved_messages` table: one row per person and message they've
