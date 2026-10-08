@@ -32,6 +32,8 @@ for the project overview and architecture diagram, or the
   emoji reactions
 - PostgreSQL `tsvector` full-text search across message history, weighted
   by relevance
+- Saved messages: a private list of messages to find again, anyone's or
+  your own, shown only while their conversation is still yours
 - Group admin model: multiple admins, promote/demote, admin-gated
   add/kick, a sole admin can't leave without promoting someone first
 - Left/kicked participants keep their row (not deleted) with a
@@ -117,6 +119,18 @@ when the person has chosen not to show it to the viewer.
 | GET | `/attachments/{id}` | resolves a signed URL |
 | POST | `/messages/{id}/reactions` | throttled 60/min |
 | DELETE | `/messages/{id}/reactions/{reaction}` | throttled 60/min |
+
+</details>
+
+<details>
+<summary><strong>Saved messages</strong></summary>
+
+| Method | Endpoint | Notes |
+|---|---|---|
+| GET | `/saved-messages` | what the viewer has saved, most recently saved first: `id`, `saved_at`, the `message` and its `conversation` (`id`, `type`, `title`: the group's, or the other person's name); `?before_id=` (a save's id) pages back, `limit` default 30, max 50, with `meta.has_more` and `meta.next_before_id`. Only messages in conversations still the viewer's: nothing from a group they left or were removed from, a deleted group, or a message deleted since (the rows are kept, and show again if they're added back); throttled 60/min |
+| GET | `/saved-messages/ids` | the ids of every message the viewer has saved, for the message menu; throttled 30/min |
+| POST | `/messages/{id}/save` | saves a message, the viewer's own or anyone's; saving it again changes nothing; 204. 403 in a conversation the viewer isn't in, or isn't in any more; 404 for a deleted group, a group event line or a deleted message; throttled 60/min |
+| DELETE | `/messages/{id}/save` | takes it off the viewer's list, whether or not it was on it; 204. Allowed wherever the viewer has a place in the conversation, even after leaving; 403 for anyone else; throttled 60/min |
 
 </details>
 

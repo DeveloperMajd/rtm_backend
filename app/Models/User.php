@@ -63,6 +63,11 @@ class User extends Authenticatable
         return $this->hasMany(Message::class, 'sender_user_id');
     }
 
+    public function savedMessages(): HasMany
+    {
+        return $this->hasMany(SavedMessage::class);
+    }
+
     public function authProviders(): HasMany
     {
         return $this->hasMany(UserAuthProvider::class);

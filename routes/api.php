@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\MessageReactionController;
 use App\Http\Controllers\Api\PasswordResetController;
 use App\Http\Controllers\Api\PresenceController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\SavedMessageController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\SocialAuthController;
 use Illuminate\Support\Facades\Route;
@@ -63,6 +64,13 @@ Route::middleware(['web', 'auth:sanctum'])->group(function () {
         Route::get('/messages/{message}/info', 'info')->middleware('throttle:60,1,messages.info.');
         Route::get('/conversations/{conversation}/messages', 'index');
         Route::get('/conversations/{conversation}/messages/{message}/context', 'context')->middleware('throttle:60,1,messages.context.');
+    });
+
+    Route::controller(SavedMessageController::class)->group(function () {
+        Route::get('/saved-messages', 'index')->middleware('throttle:60,1,saved.index.');
+        Route::get('/saved-messages/ids', 'ids')->middleware('throttle:30,1,saved.ids.');
+        Route::post('/messages/{message}/save', 'store')->middleware('throttle:60,1,saved.store.');
+        Route::delete('/messages/{message}/save', 'destroy')->middleware('throttle:60,1,saved.destroy.');
     });
 
     Route::controller(AttachmentController::class)->group(function () {

@@ -5,6 +5,46 @@ whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Saved messages
+
+- **New:** a `saved_messages` table: one row per person and message they've
+  saved, with a UUIDv7 `id` (so ordered by when it was saved),
+  `created_at`, a unique `(user_id, message_id)`, and an index on
+  `(user_id, id)` for the list. A row goes with its message or its person.
+- **New:** `POST /api/messages/{id}/save` saves a message, the viewer's own
+  or anyone's; saving it again changes nothing. `DELETE` on the same path
+  takes it off the list, whether or not it was on it. Both answer 204.
+  - Saving answers 404 for a deleted group, a group event line or a deleted
+    message, and 403 in a conversation the viewer isn't in, or isn't in any
+    more.
+  - Removing touches only the viewer's own row, so it's allowed wherever
+    they have a place in the conversation, even after leaving it or once
+    the message is deleted. Anyone else gets 403.
+  - Each is throttled to 60 a minute, on its own counter.
+- **New:** `GET /api/saved-messages` lists what the viewer has saved, most
+  recently saved first: `id`, `saved_at`, the `message` (as the history
+  shows it, with sender and attachments) and its `conversation` (`id`,
+  `type`, and `title`: the group's, or the other person's name). It pages
+  from `?before_id=` (a save's id), `limit` 30 by default and 50 at most,
+  with `meta.has_more` and `meta.next_before_id`. Throttled to 60 a minute.
+  - Only messages still there for the viewer, in conversations still
+    theirs (`Message::saveableBy`). A group they left or were removed from
+    keeps its saved messages off the list, however early they were, as does
+    a deleted group or a message deleted since. The rows are kept, and show
+    again if the viewer is added back.
+  - A page costs the same few queries however many conversations it spans.
+- **New:** `GET /api/saved-messages/ids` returns the ids of every message the
+  viewer has saved, for the message menu's Save or Remove. Throttled to 30 a
+  minute.
+- Whether a message is saved is the viewer's alone: it isn't on the message
+  resource, whose broadcast copy everyone in the conversation shares, and
+  nothing is broadcast.
+
+**Deploy:** one migration creates `saved_messages`. It's a new table, so
+nothing existing is touched.
+
+**Compatibility:** additive. New endpoints; nothing existing changes.
+
 ### Read receipts count by the settings at the time of reading
 
 - **Changed:** every read is decided when it happens, by both people's

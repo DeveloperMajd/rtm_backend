@@ -78,6 +78,32 @@ class Message extends Model
         });
     }
 
+    /**
+     * Messages $user can have under Saved: their own or anyone's, but not a
+     * group event line or a message deleted since, and only in a conversation
+     * they're still in — not one they left or were removed from, and not a
+     * deleted group. Stricter than visibleTo(), which still lets a member
+     * who left read up to when they did: a conversation that's no longer
+     * theirs keeps nothing on show, however early the message was, until
+     * they're added back (which clears the cutoff along with left_at).
+     *
+     * The one rule for saving a message and for listing what's saved.
+     */
+    public function scopeSaveableBy(Builder $query, User $user): Builder
+    {
+        return $query->userMessages()
+            ->whereNull('messages.deleted_at')
+            ->whereExists(function (QueryBuilder $membership) use ($user): void {
+                $membership->selectRaw('1')
+                    ->from('conversation_participants')
+                    ->join('conversations', 'conversations.id', '=', 'conversation_participants.conversation_id')
+                    ->whereColumn('conversation_participants.conversation_id', 'messages.conversation_id')
+                    ->where('conversation_participants.user_id', $user->id)
+                    ->whereNull('conversation_participants.left_at')
+                    ->whereNull('conversations.deleted_at');
+            });
+    }
+
     // Relationships
     public function conversation(): BelongsTo
     {
