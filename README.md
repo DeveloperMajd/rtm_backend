@@ -50,8 +50,9 @@ for the project overview and architecture diagram, or the
 - Presence (online, away once the app has been left idle, offline) +
   typing indicators, entirely Redis-backed — this state never touches
   Postgres. Away is the heartbeat key's value, so it costs no Redis
-  command of its own. An away key lasts 90 seconds rather than 30, since a
-  tab left in the background has its timers slowed to once a minute
+  command of its own. A heartbeat's key lasts 90 seconds although a beat
+  comes every 15, since a browser can slow a background tab to one beat a
+  minute
 - Password policy (`Password::defaults()`) with a HaveIBeenPwned check in
   production only (never in tests/CI, which have no network access), plus
   a full forgot/reset-password flow
@@ -166,7 +167,7 @@ when the person has chosen not to show it to the viewer.
 | PATCH | `/profile/password` | throttled 5/min |
 | POST | `/profile/avatar` | throttled 10/min |
 | DELETE | `/profile/avatar` | |
-| POST | `/presence/heartbeat` | online for the next 30s; optional `state`: `active` (the default) or `away` (the app is open but idle), which people see as `presence_status: away` while `is_online` stays true; throttled 20/min |
+| POST | `/presence/heartbeat` | online for the next 90s; optional `state`: `active` (the default) or `away` (the app is open but idle), which people see as `presence_status: away` while `is_online` stays true; throttled 20/min |
 | POST | `/presence/leave` | |
 
 </details>
