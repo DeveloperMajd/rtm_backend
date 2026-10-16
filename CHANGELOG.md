@@ -6,6 +6,22 @@ what a deploy runs and whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Away lasts through a background tab's slowed beats
+
+- **Changed:** an away heartbeat's Redis key lasts 90 seconds instead of 30.
+  A tab out of view turns away after five minutes, which is just when
+  Chrome starts slowing its timers to once a minute, so its beats came a
+  minute apart and someone left in the background flickered between away
+  and offline. An active beat still lasts 30 seconds, so a tab that's gone
+  without saying so (a crash, a lost connection) still shows offline soon.
+
+**Deploy:** no migration. Keys written before it keep their 30 seconds.
+
+**Compatibility:** no API change. Someone whose away tab is gone without a
+leave reads as away for up to 90 seconds instead of 30.
+
+## 2026-10-16
+
 ### Redis on the VM
 
 - **Changed:** sessions, the cache (the rate limiter's counters), the queue
