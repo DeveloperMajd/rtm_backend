@@ -50,7 +50,8 @@ for the project overview and architecture diagram, or the
 - Presence (online, away once the app has been left idle, offline) +
   typing indicators, entirely Redis-backed — this state never touches
   Postgres. Away is the heartbeat key's value, so it costs no Redis
-  command of its own
+  command of its own. An away key lasts 90 seconds rather than 30, since a
+  tab left in the background has its timers slowed to once a minute
 - Password policy (`Password::defaults()`) with a HaveIBeenPwned check in
   production only (never in tests/CI, which have no network access), plus
   a full forgot/reset-password flow
