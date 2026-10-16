@@ -15,8 +15,9 @@ for the project overview and architecture diagram, or the
 
 - **Laravel 13**, PHP 8.5
 - **PostgreSQL** (durable data) — hosted on [Neon](https://neon.tech) in production
-- **Redis** (sessions, cache, queue, presence/typing, Reverb's pub/sub) —
-  [Upstash](https://upstash.com) in production
+- **Redis** (sessions, cache, queue, presence/typing) — a container next to
+  the app in production, not a managed service (see
+  [Incident: Neon free-tier compute exhausted](#incident-neon-free-tier-compute-exhausted))
 - **Laravel Reverb** — self-hosted WebSocket server (Pusher-protocol
   compatible), not a third-party WebSocket SaaS
 - **Sanctum** — SPA cookie auth, with personal-access-token support for a
@@ -213,15 +214,19 @@ a portfolio with more than one non-commercial app than paying per-project
 PaaS pricing for each.
 
 **Stack on the VM:**
-- `docker-compose.prod.yml` — four containers built from one `Dockerfile`
-  (PHP 8.5-FPM + the extensions Postgres/Redis/etc. need): the app itself,
-  a queue worker, Reverb, and nginx in front of PHP-FPM
+- `docker-compose.prod.yml` — three containers built from one
+  `Dockerfile` (PHP 8.5-FPM + the extensions Postgres/Redis/etc. need):
+  the app itself, a queue worker and Reverb; plus nginx in front of
+  PHP-FPM, and Redis
 - A separate, shared **Caddy** container (not part of this repo — it's
   infra shared with other projects on the same box) terminates TLS and
   reverse-proxies by subdomain
-- **Neon** (Postgres) and **Upstash** (Redis) instead of running either as
-  a container — keeps the VM's limited RAM for compute, and offloads
-  backups/scaling to a managed service
+- **Neon** (Postgres) instead of running it as a container — backups and
+  restore points for the one store whose data matters. Redis, on the other
+  hand, does run as a container (capped at 64 MB): everything in it can be
+  lost (sessions, cache, queued broadcasts, presence), and part of its
+  traffic never stops, which no metered free tier survives — see the two
+  incidents below
 
 **CI/CD**: `.github/workflows/deploy.yml` — push to `main` triggers an SSH
 deploy that rebuilds, runs migrations, and restarts the stack. Getting this
@@ -285,6 +290,37 @@ messaging down with it. `PresenceService` now wraps every Redis call and
 fails soft (`RedisException` → logged as a warning, treated as offline),
 covered by a regression test in `PresenceTest.php`.
 
+### Incident: Neon free-tier compute exhausted
+
+The fix above moved the problem instead of solving it, because the real
+cause of the first Upstash outage wasn't testing traffic: it was the queue
+worker. Even with nobody using the app, `queue:work --sleep=1` loops about
+once a second, and every loop checks for a job and reads two signals
+(pause and restart) from the cache store; `reverb:start` reads its own
+restart signal every 5 seconds. On Upstash that idle loop was at least
+five commands a second (the Redis queue's empty poll is three on its own),
+which is how a 500K/month quota ran out about a day after the first deploy.
+
+On `database`, the same loop became about three Postgres queries a second
+(~460 transactions a minute, measured locally with nothing else running).
+Neon only scales a compute to zero after 5 minutes without a query, so it
+never did: 0.25 CU around the clock is 6 CU-hours a day, and the Free
+plan's 100 a month ran out in mid-October. Neon then suspended the compute
+until the next billing period, taking the whole API down with it, since
+sessions lived in Postgres too.
+
+Fixed by running Redis as a container on the VM (`redis` in
+`docker-compose.prod.yml`) and moving sessions, cache, the queue and
+presence onto it. Its traffic costs nothing, so the worker can poll as
+often as it likes, and Neon only sees queries from real requests: it goes
+to sleep 5 minutes after the last one. An open tab still keeps it awake,
+since the presence heartbeat runs every 15 seconds and each one loads the
+user from Postgres, but a tab left in the background stops beating after
+10 minutes (the frontend's `usePresenceHeartbeat`), so a forgotten tab no
+longer keeps Neon up. The lesson: anything that polls belongs on a
+store whose idle traffic is free, because on a metered or scale-to-zero
+service an idle poller costs as much as constant use.
+
 ### Environment reference
 
 `.env.production.example` documents every production variable. The
@@ -293,7 +329,8 @@ notable ones that differ from local dev:
 | Variable | Why |
 |---|---|
 | `DB_URL` | Neon's **direct** (non-pooled) connection string — this app's connection count is small and bounded (a handful of PHP-FPM workers + one queue worker + Reverb), nowhere near where PgBouncer pooling starts to matter, and migrations need the direct string regardless |
-| `SESSION_DRIVER` / `CACHE_STORE` / `QUEUE_CONNECTION` = `database` | see the incident above — these ran on `redis` until Upstash's free-tier quota got exhausted |
+| `SESSION_DRIVER` / `CACHE_STORE` / `QUEUE_CONNECTION` = `redis` | the `redis` container on the same VM — see the incidents above for why these run on neither Upstash nor Neon |
+| `REDIS_HOST=redis` | that container's compose service name; no password, since it's only on the stack's internal network, and no `REDIS_URL`, which would override the host |
 | `SESSION_DOMAIN=.rtm.developermajd.com` | shared parent of the frontend and this API — required for the Sanctum session cookie to actually be sent on cross-subdomain requests |
 | `REVERB_SERVER_HOST` / `REVERB_SERVER_PORT` vs `REVERB_HOST` / `REVERB_PORT` / `REVERB_SCHEME` | the former is what the process binds to *inside* its container (`0.0.0.0:8080`); the latter is what the outside world (via Caddy) actually connects to (`ws.rtm.developermajd.com:443` over `https`) |
 

@@ -22,7 +22,8 @@ jobs:
       # The server already has its own clone at /opt/apps/rtm — this just
       # tells it to pull and rebuild, rather than shipping code from the
       # runner. See docker-compose.prod.yml's own comment for why the
-      # final `restart nginx` isn't optional.
+      # final `restart nginx` isn't optional, and why redis gets its own
+      # `up -d --wait` instead of joining the forced recreate.
       - name: Deploy over SSH
         run: |
           ssh -i ~/.ssh/deploy_key "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" 'bash -s' <<'REMOTE'
@@ -31,6 +32,7 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             docker compose -f docker-compose.prod.yml build
+            docker compose -f docker-compose.prod.yml up -d --wait redis
             docker compose -f docker-compose.prod.yml run --rm -T app php artisan migrate --force < /dev/null
             docker compose -f docker-compose.prod.yml up -d --force-recreate --no-deps app queue reverb
             docker compose -f docker-compose.prod.yml restart nginx

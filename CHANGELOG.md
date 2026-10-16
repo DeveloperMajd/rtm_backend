@@ -4,6 +4,36 @@ API and schema changes, newest first, under the day each release went live
 (anything not live yet goes under Unreleased, at the top). Each entry says
 what a deploy runs and whether a client already in the field keeps working.
 
+## Unreleased
+
+### Redis on the VM
+
+- **Changed:** sessions, the cache (the rate limiter's counters), the queue
+  and presence all run on a `redis` container in `docker-compose.prod.yml`,
+  on the stack's internal network, instead of on Neon (sessions, cache,
+  queue) and Upstash (presence). An idle queue worker and Reverb poll their
+  store around the clock: on Neon that kept the compute from ever scaling
+  to zero and used up the Free plan's compute in mid-October, and on
+  Upstash it had used up the command quota. A container's polling costs
+  nothing. See the backend README's incident notes.
+- **Internal:** the queue container runs `queue:work redis --sleep=0`, and
+  the Redis queue waits for jobs with `block_for: 5` (a blocking pop)
+  instead of polling, so a broadcast is picked up the moment it's queued
+  rather than at the worker's next check. The deploy starts Redis with its
+  own `up -d --wait redis` before migrating, outside the forced recreate.
+
+**Deploy:** no migration. Before merging, in the server's `.env`: set
+`SESSION_DRIVER`, `CACHE_STORE` and `QUEUE_CONNECTION` to `redis`, set
+`REDIS_HOST=redis`, `REDIS_PORT=6379` and `REDIS_PASSWORD=null`, and delete
+`REDIS_URL` (it overrides the host, so it would point everything back at
+Upstash). `REDIS_CACHE_DB=0` can stay or go. Neon has to be reachable, since
+the deploy migrates before it recreates anything.
+
+**Compatibility:** everyone is signed out once, since sessions move from
+Postgres to Redis and none are carried over, and anyone online reads as
+offline until their next heartbeat (15 seconds at most). Broadcast jobs
+still in the `jobs` table at deploy time are never sent. No API change.
+
 ## 2026-10-08
 
 ### Shared media
