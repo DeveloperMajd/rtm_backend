@@ -51,8 +51,11 @@ for the project overview and architecture diagram, or the
   typing indicators, entirely Redis-backed — this state never touches
   Postgres. Away is the heartbeat key's value, so it costs no Redis
   command of its own. A heartbeat's key lasts 90 seconds although a beat
-  comes every 15, since a browser can slow a background tab to one beat a
-  minute
+  comes every 30, since a browser can slow a background tab to one beat a
+  minute. Every change is pushed (`PresenceChanged`) to whoever sees the
+  person, the moment it happens: by a heartbeat that changes the status, a
+  leave, or `presence:watch` when a key runs out with nobody leaving, so
+  no client polls for it
 - Password policy (`Password::defaults()`) with a HaveIBeenPwned check in
   production only (never in tests/CI, which have no network access), plus
   a full forgot/reset-password flow
@@ -216,10 +219,10 @@ a portfolio with more than one non-commercial app than paying per-project
 PaaS pricing for each.
 
 **Stack on the VM:**
-- `docker-compose.prod.yml` — three containers built from one
+- `docker-compose.prod.yml` — four containers built from one
   `Dockerfile` (PHP 8.5-FPM + the extensions Postgres/Redis/etc. need):
-  the app itself, a queue worker and Reverb; plus nginx in front of
-  PHP-FPM, and Redis
+  the app itself, a queue worker, Reverb and the presence watcher; plus
+  nginx in front of PHP-FPM, and Redis
 - A separate, shared **Caddy** container (not part of this repo — it's
   infra shared with other projects on the same box) terminates TLS and
   reverse-proxies by subdomain
@@ -318,7 +321,7 @@ Fixed by running Redis as a container on the VM (`redis` in
 presence onto it. Its traffic costs nothing, so the worker can poll as
 often as it likes, and Neon only sees queries from real requests: it goes
 to sleep 5 minutes after the last one. An open tab still keeps it awake,
-since the presence heartbeat runs every 15 seconds and each one loads the
+since the presence heartbeat runs every 30 seconds and each one loads the
 user from Postgres, but a tab left in the background stops beating after
 10 minutes (the frontend's `usePresenceHeartbeat`), so a forgotten tab no
 longer keeps Neon up. The lesson: anything that polls belongs on a

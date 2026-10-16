@@ -7,7 +7,7 @@
 #   docker compose -f docker-compose.prod.yml build
 #   docker compose -f docker-compose.prod.yml up -d --wait redis
 #   docker compose -f docker-compose.prod.yml run --rm -T app php artisan migrate --force < /dev/null
-#   docker compose -f docker-compose.prod.yml up -d --force-recreate --no-deps app queue reverb
+#   docker compose -f docker-compose.prod.yml up -d --force-recreate --no-deps app queue reverb presence
 #   docker compose -f docker-compose.prod.yml restart nginx
 #
 # None of the flags above are decorative — the first two automated deploys
@@ -30,7 +30,7 @@
 # harmless, genuinely-belt-and-suspenders guarantee that app/queue/reverb
 # always end up on the image that was just built, rather than depending on
 # `up -d`'s own change-detection being right every time.
-# `--no-deps` keeps that recreate scoped to just those three (nginx is
+# `--no-deps` keeps that recreate scoped to just those four (nginx is
 # handled next, deliberately not via the same recreate, and redis by the
 # step before migrate).
 #
@@ -114,6 +114,21 @@ services:
       - web
     depends_on:
       - app
+      - redis
+
+  # Turns a presence key running out (a tab gone without a leave: a crash,
+  # a lid closed) into an offline broadcast, as a leave already is. It waits
+  # on Redis's expired-key notifications, which it switches on itself, so it
+  # sends nothing while nothing expires. See app/Console/Commands/PresenceWatch.php.
+  presence:
+    image: rtm-app:latest
+    container_name: rtm-presence
+    restart: unless-stopped
+    env_file: ./.env
+    command: ["php", "artisan", "presence:watch"]
+    networks:
+      - rtm-internal
+    depends_on:
       - redis
 
   # Sessions, the rate limiter's cache, the queue and presence: everything
