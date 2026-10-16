@@ -24,7 +24,7 @@ for the project overview and architecture diagram, or the
   future non-browser client
 - **Socialite** — Google OAuth
 - **Resend** — transactional email (password reset)
-- **Pest** — 127 tests, feature-first
+- **Pest** — 267 tests, feature-first, run in CI before every deploy
 
 ## Feature overview
 
@@ -199,7 +199,7 @@ sign up at [resend.com](https://resend.com) and set `MAIL_MAILER=resend` +
 ### Testing
 
 ```bash
-./vendor/bin/sail artisan test          # full suite (128 tests)
+./vendor/bin/sail artisan test          # full suite (267 tests)
 ./vendor/bin/sail artisan pint --test   # style check
 vendor/bin/pest --filter="test name"    # a single test
 ```
@@ -228,10 +228,12 @@ PaaS pricing for each.
   traffic never stops, which no metered free tier survives — see the two
   incidents below
 
-**CI/CD**: `.github/workflows/deploy.yml` — push to `main` triggers an SSH
-deploy that rebuilds, runs migrations, and restarts the stack. Getting this
-right took three iterations; the second and third fixed real bugs in the
-deploy script itself, not the app:
+**CI/CD**: `.github/workflows/deploy.yml` — every push to `main` and every
+pull request into it runs Pint and the Pest suite against Postgres and
+Redis service containers. On `main`, an SSH deploy that rebuilds, runs
+migrations, and restarts the stack follows only if they pass. Getting the
+deploy right took three iterations; the second and third fixed real bugs in
+the deploy script itself, not the app:
 
 1. The first automated deploy reported success but silently kept the *old*
    code running. Root cause: `docker compose run` (used for

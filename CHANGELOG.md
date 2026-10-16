@@ -21,6 +21,10 @@ what a deploy runs and whether a client already in the field keeps working.
   instead of polling, so a broadcast is picked up the moment it's queued
   rather than at the worker's next check. The deploy starts Redis with its
   own `up -d --wait redis` before migrating, outside the forced recreate.
+- **Internal:** the workflow, now "Test and deploy", runs Pint and the Pest
+  suite against Postgres and Redis service containers on every push to main
+  and every pull request into it. The deploy job needs that to pass, and
+  only runs for main.
 
 **Deploy:** no migration. Before merging, in the server's `.env`: set
 `SESSION_DRIVER`, `CACHE_STORE` and `QUEUE_CONNECTION` to `redis`, set
