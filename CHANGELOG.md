@@ -6,6 +6,32 @@ what a deploy runs and whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Presence is pushed
+
+- **New:** a `PresenceChanged` event (`user_id`, `presence_status`,
+  `is_online`) on the private channel (`App.Models.User.{id}`) of everyone
+  who sees the person: the other current members of their conversations
+  (not a deleted group's) and whoever has them as a contact. It's sent only
+  when the status changes: online from offline, away, back, and offline,
+  whether by a leave or by the key running out. A heartbeat that keeps
+  things as they were sends nothing.
+- **New:** `php artisan presence:watch`, run for good like the queue worker
+  (the `presence` container in production, and `composer run dev`). It
+  waits on Redis's expired-key notifications, which it switches on itself,
+  and announces offline when a presence key runs out with nobody leaving (a
+  crash, a lid closed). It sends nothing while nothing expires.
+- **Internal:** a heartbeat writes its key and reads the old value in one
+  Lua call (the one round trip SETEX took), so it knows whether anything
+  changed. `PresenceService::audienceOf()` says who's told.
+
+**Deploy:** no migration. The deploy creates the `presence` container
+(`rtm-presence`) beside the queue worker, with nothing new in `.env`.
+
+**Compatibility:** additive. A client that doesn't listen for
+`PresenceChanged` sees statuses as it always did, from the API.
+
+## 2026-10-16
+
 ### Every heartbeat lasts 90 seconds
 
 - **Changed:** an active heartbeat's Redis key lasts 90 seconds too, like an
@@ -17,8 +43,6 @@ what a deploy runs and whether a client already in the field keeps working.
 
 **Compatibility:** no API change. Someone whose tab is gone without a leave
 (a crash, a lid closed) reads as online for up to 90 seconds instead of 30.
-
-## 2026-10-16
 
 ### Away lasts through a background tab's slowed beats
 
