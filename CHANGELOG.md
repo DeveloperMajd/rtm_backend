@@ -6,6 +6,20 @@ what a deploy runs and whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Every heartbeat lasts 90 seconds
+
+- **Changed:** an active heartbeat's Redis key lasts 90 seconds too, like an
+  away one. In production a browser slowed a background tab to one beat a
+  minute within a minute of hiding it, long before it turned away, so at
+  30 seconds its user flickered between online and offline until then.
+
+**Deploy:** no migration. Keys written before it keep their 30 seconds.
+
+**Compatibility:** no API change. Someone whose tab is gone without a leave
+(a crash, a lid closed) reads as online for up to 90 seconds instead of 30.
+
+## 2026-10-16
+
 ### Away lasts through a background tab's slowed beats
 
 - **Changed:** an away heartbeat's Redis key lasts 90 seconds instead of 30.
@@ -19,8 +33,6 @@ what a deploy runs and whether a client already in the field keeps working.
 
 **Compatibility:** no API change. Someone whose away tab is gone without a
 leave reads as away for up to 90 seconds instead of 30.
-
-## 2026-10-16
 
 ### Redis on the VM
 

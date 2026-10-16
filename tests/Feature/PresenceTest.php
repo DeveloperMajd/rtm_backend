@@ -71,19 +71,16 @@ test('an idle app keeps someone online, but away, until they use it again', func
     expect($service->statusOf($user->id))->toBe(PresenceStatus::Online);
 });
 
-// A background tab turns away after five minutes, which is just when Chrome
-// slows its timers to once a minute: an away beat has to outlast that gap,
-// while an active one lapses fast so a tab that's gone shows offline soon.
-test('an away heartbeat outlasts a background tab’s slowed beats, and an active one lapses fast', function () {
+// A browser can slow a tab that's out of view to one beat a minute, whether
+// it's still active (seen in production within a minute of hiding it) or has
+// turned away: either beat has to outlast that gap.
+test('a heartbeat outlasts a background tab’s slowed beats, active or away', function (string $state) {
     $user = User::factory()->create();
-    $key = "presence:online:{$user->id}";
 
-    $this->actingAs($user)->postJson('/api/presence/heartbeat', ['state' => 'away'])->assertNoContent();
-    expect(Redis::connection()->ttl($key))->toBeGreaterThan(60);
+    $this->actingAs($user)->postJson('/api/presence/heartbeat', ['state' => $state])->assertNoContent();
 
-    $this->actingAs($user)->postJson('/api/presence/heartbeat', ['state' => 'active'])->assertNoContent();
-    expect(Redis::connection()->ttl($key))->toBeLessThanOrEqual(30);
-});
+    expect(Redis::connection()->ttl("presence:online:{$user->id}"))->toBeGreaterThan(60);
+})->with(['active', 'away']);
 
 test('turns away a state it doesn’t know, and leaves presence as it was', function () {
     $user = User::factory()->create();

@@ -11,15 +11,16 @@ use RedisException;
 
 class PresenceService
 {
-    private const int TTL_SECONDS = 30;
-
     /**
-     * Longer for an away beat: a tab out of view turns away after five
-     * minutes, which is just when Chrome starts slowing its timers to once a
-     * minute. The beats then come a minute apart, and with the 30 seconds an
-     * active beat gets, they'd show the person offline half of the time.
+     * Six beats' worth, though a beat comes every 15 seconds: a browser can
+     * slow a tab that's out of view to one beat a minute, active or away.
+     * Chrome does it after five minutes, and in production it was seen
+     * within a minute of the tab going to the background; at 30 seconds the
+     * person showed offline between beats. A tab that closes still leaves at
+     * once (its pagehide beacon), so this is only how long a tab that's gone
+     * without saying so (a crash, a lid closed) still shows online.
      */
-    private const int AWAY_TTL_SECONDS = 90;
+    private const int TTL_SECONDS = 90;
 
     private const string KEY_PREFIX = 'presence:online:';
 
@@ -40,9 +41,7 @@ class PresenceService
     public function heartbeat(User $user, bool $away = false): void
     {
         $this->safely(fn (Connection $redis) => $redis->setex(
-            self::KEY_PREFIX.$user->id,
-            $away ? self::AWAY_TTL_SECONDS : self::TTL_SECONDS,
-            $away ? self::AWAY : 'active',
+            self::KEY_PREFIX.$user->id, self::TTL_SECONDS, $away ? self::AWAY : 'active',
         ));
 
         if (! $user->last_seen_at || $user->last_seen_at->lt(now()->subMinute())) {

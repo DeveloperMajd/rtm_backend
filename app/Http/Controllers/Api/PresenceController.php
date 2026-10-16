@@ -11,7 +11,7 @@ use Illuminate\Http\Response;
 class PresenceController extends Controller
 {
     /**
-     * Keeps the person online for the next 30 seconds: using the app, or
+     * Keeps the person online for the next 90 seconds: using the app, or
      * away (`state: away`) when they've left it idle.
      */
     public function heartbeat(PresenceHeartbeatRequest $request, PresenceService $service): Response
