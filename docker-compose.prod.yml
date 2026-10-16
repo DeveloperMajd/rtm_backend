@@ -5,6 +5,7 @@
 #
 # Deploy flow (run on the server, from this file's directory):
 #   docker compose -f docker-compose.prod.yml build
+#   docker compose -f docker-compose.prod.yml up -d --wait redis
 #   docker compose -f docker-compose.prod.yml run --rm -T app php artisan migrate --force < /dev/null
 #   docker compose -f docker-compose.prod.yml up -d --force-recreate --no-deps app queue reverb
 #   docker compose -f docker-compose.prod.yml restart nginx
@@ -30,7 +31,15 @@
 # always end up on the image that was just built, rather than depending on
 # `up -d`'s own change-detection being right every time.
 # `--no-deps` keeps that recreate scoped to just those three (nginx is
-# handled next, deliberately not via the same recreate).
+# handled next, deliberately not via the same recreate, and redis by the
+# step before migrate).
+#
+# `up -d --wait redis`, on its own and first: the first deploy creates it,
+# later ones leave it running unless its definition below changed (it
+# doesn't run this repo's image, so a normal deploy has nothing to update
+# in it, and recreating it anyway would just cut every session read for a
+# moment), and `--wait` blocks until its healthcheck passes, so app/queue/
+# reverb never come up against a Redis that isn't answering yet.
 #
 # `restart nginx`: nginx's own image never changes, so it's correctly left
 # out of the recreate above — but it resolves the `app` hostname once, at
@@ -57,6 +66,8 @@ services:
       - storage-app:/var/www/html/storage/app
     networks:
       - rtm-internal
+    depends_on:
+      - redis
 
   nginx:
     image: nginx:alpine
@@ -75,15 +86,20 @@ services:
     container_name: rtm-queue
     restart: unless-stopped
     env_file: ./.env
-    # "database", not "redis": see .env.production.example's note on
-    # SESSION_DRIVER/CACHE_STORE/QUEUE_CONNECTION for why.
-    command: ["php", "artisan", "queue:work", "database", "--sleep=1", "--tries=3", "--max-time=3600"]
+    # `redis` must match QUEUE_CONNECTION in .env: queue:work takes the
+    # connection as an argument and doesn't read QUEUE_CONNECTION itself.
+    # `--sleep=0` because the waiting already happens in Redis (`block_for`
+    # in config/queue.php): sleeping after an empty wait as well would only
+    # hold the next broadcast back by up to a second. It can't spin: an
+    # error, a paused queue or maintenance mode still sleeps a second.
+    command: ["php", "artisan", "queue:work", "redis", "--sleep=0", "--tries=3", "--max-time=3600"]
     volumes:
       - storage-app:/var/www/html/storage/app
     networks:
       - rtm-internal
     depends_on:
       - app
+      - redis
 
   reverb:
     image: rtm-app:latest
@@ -98,6 +114,43 @@ services:
       - web
     depends_on:
       - app
+      - redis
+
+  # Sessions, the rate limiter's cache, the queue and presence: everything
+  # this app keeps in Redis. It runs here rather than on a managed service
+  # because part of its traffic never stops, even with nobody using the
+  # app: the queue worker waits on it for a job and reads its pause and
+  # restart signals (every 5 seconds or so since `block_for`, every second
+  # before), and Reverb reads its restart signal every 5 seconds. On
+  # Upstash that used up the free command quota; moved
+  # to the `database` drivers, the same polling kept Neon from ever scaling
+  # to zero and used up its free compute. Here it costs nothing. See
+  # .env.production.example.
+  #
+  # No `ports:` and only the internal network, so nothing outside this
+  # stack can reach it, which is why it has no password (the startup
+  # warning that it "does not require authentication" is expected; the
+  # network is the restriction it can't see). Nothing in it is durable data
+  # (losing it signs people out and drops broadcasts not sent yet), but the
+  # append-only file on the `redis-data` volume keeps it through restarts
+  # and recreates anyway. `maxmemory` caps it on this shared VM, and
+  # `volatile-lru` only ever evicts keys that have a TTL (sessions,
+  # rate-limit counters, presence), never the queue's job lists, which have
+  # none.
+  redis:
+    image: redis:8-alpine
+    container_name: rtm-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "64mb", "--maxmemory-policy", "volatile-lru"]
+    volumes:
+      - redis-data:/data
+    networks:
+      - rtm-internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
 networks:
   rtm-internal:
@@ -107,3 +160,4 @@ networks:
 
 volumes:
   storage-app:
+  redis-data:

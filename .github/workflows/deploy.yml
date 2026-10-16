@@ -1,7 +1,11 @@
-name: Deploy
+name: Test and deploy
 
 on:
   push:
+    branches: [main]
+  # The tests run on every pull request into main too, so a failure shows
+  # on the PR before it's merged; the deploy job skips those runs.
+  pull_request:
     branches: [main]
   # Lets you re-run a deploy manually from the Actions tab without needing
   # an empty commit — e.g. to pick up a change made only on the server, or
@@ -9,7 +13,76 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Pint and the whole Pest suite, against a real Postgres and Redis as in
+  # production (search needs Postgres's tsvector, presence talks to Redis
+  # directly). The deploy only starts once this passes, so a commit that
+  # breaks a test never reaches the server.
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: testing
+          POSTGRES_USER: rtm
+          POSTGRES_PASSWORD: rtm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rtm -d testing"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    # Real environment variables win over .env, so these point the copy of
+    # .env.example made below at the two services; phpunit.xml then sets
+    # the database name (`testing`) and Redis DB 2 on top, as it does in
+    # Sail.
+    env:
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_USERNAME: rtm
+      DB_PASSWORD: rtm
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+    steps:
+      - uses: actions/checkout@v7
+
+      # The PHP version and extensions of the production image (Dockerfile).
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: pdo_pgsql, pgsql, intl, bcmath, gd, zip, pcntl, mbstring, redis
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Prepare .env
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Pint
+        run: vendor/bin/pint --test
+
+      - name: Tests
+        run: php artisan test
+
   deploy:
+    needs: test
+    # Only main deploys (the script below always deploys origin/main): a
+    # pull request, or a manual run started on another branch, just tests.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Configure SSH
@@ -22,7 +95,8 @@ jobs:
       # The server already has its own clone at /opt/apps/rtm — this just
       # tells it to pull and rebuild, rather than shipping code from the
       # runner. See docker-compose.prod.yml's own comment for why the
-      # final `restart nginx` isn't optional.
+      # final `restart nginx` isn't optional, and why redis gets its own
+      # `up -d --wait` instead of joining the forced recreate.
       - name: Deploy over SSH
         run: |
           ssh -i ~/.ssh/deploy_key "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" 'bash -s' <<'REMOTE'
@@ -31,6 +105,7 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             docker compose -f docker-compose.prod.yml build
+            docker compose -f docker-compose.prod.yml up -d --wait redis
             docker compose -f docker-compose.prod.yml run --rm -T app php artisan migrate --force < /dev/null
             docker compose -f docker-compose.prod.yml up -d --force-recreate --no-deps app queue reverb
             docker compose -f docker-compose.prod.yml restart nginx

@@ -69,7 +69,11 @@ return [
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('REDIS_QUEUE', 'default'),
             'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
-            'block_for' => null,
+            // Wait on Redis (BLPOP) for up to 5 seconds instead of polling:
+            // a pushed job wakes the worker at once, so a broadcast goes out
+            // without waiting for the worker's next check, and an idle worker
+            // sends a few commands every 5 seconds instead of every second.
+            'block_for' => 5,
             'after_commit' => false,
         ],
 
