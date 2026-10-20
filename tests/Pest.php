@@ -1,6 +1,8 @@
 <?php
 
+use Illuminate\Auth\SessionGuard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use Tests\TestCase;
 
 /*
@@ -47,4 +49,17 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+/**
+ * What AuthenticateSession keeps in a session: an HMAC of the password hash
+ * the session was signed in with. It ends the session once that no longer
+ * matches the account's password.
+ */
+function sessionFingerprint(string $passwordHash): string
+{
+    /** @var SessionGuard $guard */
+    $guard = Auth::guard('web');
+
+    return $guard->hashPasswordForCookie($passwordHash);
 }

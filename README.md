@@ -64,7 +64,13 @@ for the project overview and architecture diagram, or the
 
 All routes are under `/api`. Everything except `auth/*` requires a Sanctum
 session (`auth:sanctum` + the `web` middleware group, so CSRF/cookie rules
-apply — see [Local setup](#local-setup)).
+apply — see [Local setup](#local-setup)). Those routes, `auth/me`,
+`auth/logout` and `/broadcasting/auth` also run Sanctum's
+`AuthenticateSession`: a session is signed out (401) once the account's
+password is no longer the one it signed in with. Everything outside
+`auth/*` (and `/broadcasting/auth`) also needs a confirmed email: an
+account that signed up with a password gets a 403 until it opens the
+emailed link.
 
 <details>
 <summary><strong>Auth</strong></summary>
@@ -76,9 +82,11 @@ apply — see [Local setup](#local-setup)).
 | POST | `/auth/logout` | |
 | GET | `/auth/me` | |
 | GET | `/auth/google/redirect` | throttled 10/min |
-| GET | `/auth/google/callback` | throttled 10/min |
+| GET | `/auth/google/callback` | throttled 10/min; Google must have verified the email; claims an account whose email was never verified (its password goes) |
 | POST | `/auth/forgot-password` | throttled 5/min |
 | POST | `/auth/reset-password` | throttled 5/min |
+| POST | `/auth/email/verify/{id}/{hash}` | the emailed link, posted back by the frontend while signed in as that account; signed, 60 min; throttled 6/min |
+| POST | `/auth/email/verification-notification` | another link; throttled 3 per 10 min; 204 once confirmed |
 
 </details>
 

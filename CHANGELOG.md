@@ -6,6 +6,66 @@ what a deploy runs and whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Password sign-ups confirm their email
+
+- **New:** signing up with a password emails a link that confirms the
+  address (`MustVerifyEmail` on `User`, Laravel's `VerifyEmail`). The link
+  goes to the frontend's `/verify-email` page, which posts it back to
+  `POST /api/auth/email/verify/{id}/{hash}` (a signature relative to the
+  path, valid 60 minutes) while signed in as that account. Opening the
+  email while signed in as someone else, or signed out, confirms nothing:
+  otherwise whoever signed up with another person's address could have
+  that person verify it for them.
+- **New:** `POST /api/auth/email/verification-notification` sends another
+  link (3 every 10 minutes; a 204 and no email once the address is
+  confirmed).
+- **Changed:** until the address is confirmed, everything under `/api` but
+  `auth/*` answers 403 (`Your email address is not verified.`), and so does
+  `/broadcasting/auth`; `auth/me` and `auth/logout` keep working. Every
+  profile response (`auth/me`, `login`, `register`, `profile`) now has
+  `email_verified_at`. Accounts made or claimed through Google are verified
+  already.
+
+**Deploy:** no migration, nothing new in `.env`. Deploy the frontend first:
+it shows "Check your email" for `email_verified_at: null` and carries on as
+before while the field isn't there, whereas an older frontend would only
+see 403s.
+
+**Compatibility:** breaking for the password accounts that exist today,
+none of which has confirmed its address: on their next visit they get a
+link and confirm it before using the app again.
+
+### Google sign-in claims an unverified account
+
+- **Fixed (security):** a Google sign-in whose email matches an account that
+  never verified its address now claims that account: its password is
+  removed and its remember token rotated, so every session signed in with
+  the old password ends (see below). Before, the Google identity was linked
+  and the password kept, so whoever had signed up with someone else's
+  address first could still sign in as them afterwards.
+- **Changed:** a Google sign-in that goes by the email (a first sign-in, or
+  a link to an existing account) needs Google to have verified the address
+  (`email_verified`). Without it the callback redirects to
+  `/login?error=oauth_failed`, as for any other failure. An identity that's
+  already linked signs in by its Google id, as before, and when its account
+  never confirmed its address (an older version linked without doing so),
+  the sign-in claims it the same way, provided Google vouches for that very
+  address.
+- **New:** Sanctum's `AuthenticateSession` on every signed-in route, on
+  `auth/me` and `auth/logout`, and on `/broadcasting/auth`. A session keeps
+  a fingerprint of the password it was signed in with and gets a 401 once
+  the account's password is different. So changing or resetting a password
+  now also signs the account's other sessions out, while the session that
+  changed it stays signed in. A sign-in starts without a fingerprint left in
+  the session from before.
+
+**Deploy:** no migration, nothing new in `.env`.
+
+**Compatibility:** sessions from before the deploy have no fingerprint yet
+and take one on their next request, so the deploy signs nobody out. Someone
+who signed up with a password and later continues with Google loses that
+password (Forgot password sets a new one).
+
 ### Presence is pushed
 
 - **New:** a `PresenceChanged` event (`user_id`, `presence_status`,

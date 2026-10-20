@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Laravel\Sanctum\Http\Middleware\AuthenticateSession;
 
 // add api.php
 
@@ -11,9 +12,14 @@ return Application::configure(basePath: dirname(__DIR__))
         web: __DIR__.'/../routes/web.php',
         api: __DIR__.'/../routes/api.php',
         commands: __DIR__.'/../routes/console.php',
-        channels: __DIR__.'/../routes/channels.php',
         health: '/up',
     )
+    // /broadcasting/auth signs channel subscriptions for the session's user,
+    // so a session AuthenticateSession has ended, or an account whose email
+    // isn't verified yet, mustn't get one signed either (see routes/api.php).
+    ->withBroadcasting(__DIR__.'/../routes/channels.php', [
+        'middleware' => ['web', AuthenticateSession::class, 'verified'],
+    ])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->preventRequestForgery(
             except: [

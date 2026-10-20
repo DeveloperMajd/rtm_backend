@@ -20,6 +20,9 @@ class ProfileResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'email' => $this->email,
+            // Null until the address is confirmed: the app shows "Check
+            // your email" instead of itself until then.
+            'email_verified_at' => $this->email_verified_at,
             'avatar_url' => $this->avatar_url,
             'bio' => $this->bio,
         ];
