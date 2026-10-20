@@ -20,7 +20,7 @@ use Laravel\Sanctum\Http\Middleware\AuthenticateSession;
 Route::prefix('auth')->middleware('web')->group(function () {
     Route::controller(AuthController::class)->group(function () {
         Route::post('/register', 'register')->middleware('throttle:5,1,auth.register.');
-        Route::post('/login', 'login')->middleware('throttle:5,1,auth.login.');
+        Route::post('/login', 'login')->middleware('throttle:login');
         Route::middleware(['auth:sanctum', AuthenticateSession::class])->group(function () {
             Route::post('/logout', 'logout');
             Route::get('/me', 'me');

@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
 use Laravel\Sanctum\Http\Middleware\AuthenticateSession;
 
 // add api.php
@@ -21,6 +22,20 @@ return Application::configure(basePath: dirname(__DIR__))
         'middleware' => ['web', AuthenticateSession::class, 'verified'],
     ])
     ->withMiddleware(function (Middleware $middleware): void {
+        // Requests arrive from the shared Caddy by way of nginx, so the
+        // visitor's address is in X-Forwarded-For. Without trusting the
+        // proxy, every visitor looked like nginx and each guest rate limit
+        // was one bucket for everybody. The caller is trusted because only
+        // nginx can reach PHP-FPM (the `app` container is on rtm-internal
+        // alone), and Caddy ignores any X-Forwarded-* a visitor sends and
+        // sets its own. Only For and Proto: nothing here needs a forwarded
+        // host or port, and trusting them would only widen what a forged
+        // header could change.
+        $middleware->trustProxies(
+            at: '*',
+            headers: Request::HEADER_X_FORWARDED_FOR | Request::HEADER_X_FORWARDED_PROTO,
+        );
+
         $middleware->preventRequestForgery(
             except: [
                 'api/auth/register',
