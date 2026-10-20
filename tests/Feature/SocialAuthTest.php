@@ -67,6 +67,41 @@ it('signs a linked identity in by its provider id alone, whatever the provider s
     $this->assertAuthenticatedAs($user);
 });
 
+// An older version linked identities without confirming the address.
+it('confirms and claims an account linked earlier whose email was never confirmed', function () {
+    $user = User::factory()->create(['email' => 'ada@example.com', 'email_verified_at' => null]);
+    $user->authProviders()->create(['provider' => 'google', 'provider_user_id' => 'google-123']);
+    $rememberToken = $user->remember_token;
+
+    Socialite::fake('google', SocialiteUser::fake(['id' => 'google-123', 'email' => 'ADA@example.com', 'email_verified' => true]));
+
+    $this->get('/api/auth/google/callback')->assertRedirect(config('services.frontend_url').'/conversations');
+
+    $user->refresh();
+    expect($user->email_verified_at)->not->toBeNull();
+    expect($user->password)->toBeNull();
+    expect($user->remember_token)->not->toBe($rememberToken);
+    $this->assertAuthenticatedAs($user);
+});
+
+it('leaves such an account unconfirmed when Google vouches for another address, or for none', function (array $google) {
+    $user = User::factory()->create(['email' => 'ada@example.com', 'email_verified_at' => null]);
+    $user->authProviders()->create(['provider' => 'google', 'provider_user_id' => 'google-123']);
+    $passwordHash = $user->password;
+
+    Socialite::fake('google', SocialiteUser::fake(['id' => 'google-123', ...$google]));
+
+    $this->get('/api/auth/google/callback')->assertRedirect(config('services.frontend_url').'/conversations');
+
+    $user->refresh();
+    expect($user->email_verified_at)->toBeNull();
+    expect($user->password)->toBe($passwordHash);
+    $this->assertAuthenticatedAs($user);
+})->with([
+    'another address' => [['email' => 'someone@example.com', 'email_verified' => true]],
+    'not verified' => [['email' => 'ada@example.com', 'email_verified' => false]],
+]);
+
 it('claims an unverified password account with a matching email, and the password goes', function () {
     $squatted = User::factory()->create(['email' => 'ada@example.com', 'email_verified_at' => null]);
     $rememberToken = $squatted->remember_token;

@@ -47,7 +47,10 @@ link and confirm it before using the app again.
   a link to an existing account) needs Google to have verified the address
   (`email_verified`). Without it the callback redirects to
   `/login?error=oauth_failed`, as for any other failure. An identity that's
-  already linked signs in by its Google id, as before.
+  already linked signs in by its Google id, as before, and when its account
+  never confirmed its address (an older version linked without doing so),
+  the sign-in claims it the same way, provided Google vouches for that very
+  address.
 - **New:** Sanctum's `AuthenticateSession` on every signed-in route, on
   `auth/me` and `auth/logout`, and on `/broadcasting/auth`. A session keeps
   a fingerprint of the password it was signed in with and gets a 401 once
