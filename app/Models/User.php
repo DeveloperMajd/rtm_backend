@@ -42,6 +42,17 @@ class User extends Authenticatable
         ];
     }
 
+    /**
+     * An account made through Google has no password: an empty string
+     * rather than null, because AuthenticateSession fingerprints every
+     * session with an HMAC of this value, and hash_hmac() no longer takes
+     * null (deprecated since PHP 8.1).
+     */
+    public function getAuthPassword(): string
+    {
+        return $this->password ?? '';
+    }
+
     // Relationships
     public function settings(): HasOne
     {

@@ -14,12 +14,13 @@ use App\Http\Controllers\Api\SavedMessageController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\SocialAuthController;
 use Illuminate\Support\Facades\Route;
+use Laravel\Sanctum\Http\Middleware\AuthenticateSession;
 
 Route::prefix('auth')->middleware('web')->group(function () {
     Route::controller(AuthController::class)->group(function () {
         Route::post('/register', 'register')->middleware('throttle:5,1,auth.register.');
         Route::post('/login', 'login')->middleware('throttle:5,1,auth.login.');
-        Route::middleware('auth:sanctum')->group(function () {
+        Route::middleware(['auth:sanctum', AuthenticateSession::class])->group(function () {
             Route::post('/logout', 'logout');
             Route::get('/me', 'me');
         });
@@ -41,7 +42,12 @@ Route::prefix('auth')->middleware('web')->group(function () {
 // throttled route shared a single counter: a burst of read receipts and
 // typing pings used up the 10-a-minute allowance for creating or deleting
 // a group. Each route now counts only its own requests.
-Route::middleware(['web', 'auth:sanctum'])->group(function () {
+//
+// AuthenticateSession (here, on auth/logout and auth/me above, and on
+// /broadcasting/auth in bootstrap/app.php) ends a session once the
+// account's password is no longer the one it signed in with: after a
+// reset, a change, or a Google sign-in claiming an unverified account.
+Route::middleware(['web', 'auth:sanctum', AuthenticateSession::class])->group(function () {
     Route::prefix('conversations')->controller(ConversationController::class)->group(function () {
         Route::get('/', 'index');
         Route::post('/', 'store')->middleware('throttle:10,1,conversations.store.');

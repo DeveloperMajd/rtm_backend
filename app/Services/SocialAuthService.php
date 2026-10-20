@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\User;
 use App\Models\UserAuthProvider;
-use Laravel\Socialite\Contracts\User as SocialiteUser;
+use Illuminate\Support\Str;
+use Laravel\Socialite\AbstractUser as SocialiteUser;
+use RuntimeException;
 
 class SocialAuthService
 {
@@ -18,14 +20,25 @@ class SocialAuthService
             return $authProvider->user;
         }
 
+        // Everything from here on goes by the email address, so the provider
+        // has to vouch that whoever is signing in owns it.
+        if (! filter_var($socialiteUser->getRaw()['email_verified'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            throw new RuntimeException("The provider hasn't verified this email address.");
+        }
+
         $user = User::where('email', $socialiteUser->getEmail())->first();
 
         if ($user) {
-            // The provider has already verified this email address, so a
-            // successful OAuth login is proof enough — even if the account
-            // was originally created with a password and never verified.
+            // Nobody ever proved they own this address, so anyone could have
+            // typed it in at sign-up and chosen the password. This sign-in
+            // has just proved it, so it claims the account: the password
+            // goes, and with it every session signed in with it, since
+            // AuthenticateSession ends a session once the password it was
+            // signed in with has changed.
             if ($user->email_verified_at === null) {
-                $user->forceFill(['email_verified_at' => now()])->save();
+                $user->forceFill(['password' => null, 'email_verified_at' => now()]);
+                $user->setRememberToken(Str::random(60));
+                $user->save();
             }
         } else {
             $user = new User([

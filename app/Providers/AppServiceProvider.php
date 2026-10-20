@@ -6,9 +6,11 @@ use App\Models\Conversation;
 use App\Models\User;
 use App\Policies\ConversationPolicy;
 use App\Services\LastSeenVisibility;
+use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
@@ -32,6 +34,18 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Gate::policy(Conversation::class, ConversationPolicy::class);
+
+        // A sign-in starts without a password fingerprint from before it.
+        // AuthenticateSession (routes/api.php) ends a session whose stored
+        // fingerprint no longer matches the account's password, and signing
+        // in keeps the session's data: one left from another account, or
+        // from before a Google sign-in claimed this one, would end the new
+        // sign-in on its next request.
+        Event::listen(Login::class, function (Login $event): void {
+            if (request()->hasSession()) {
+                request()->session()->forget('password_hash_'.$event->guard);
+            }
+        });
 
         // Searching one conversation re-runs as the viewer types into the
         // in-chat search bar, so it gets twice the palette's allowance — and a

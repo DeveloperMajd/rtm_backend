@@ -6,6 +6,34 @@ what a deploy runs and whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Google sign-in claims an unverified account
+
+- **Fixed (security):** a Google sign-in whose email matches an account that
+  never verified its address now claims that account: its password is
+  removed and its remember token rotated, so every session signed in with
+  the old password ends (see below). Before, the Google identity was linked
+  and the password kept, so whoever had signed up with someone else's
+  address first could still sign in as them afterwards.
+- **Changed:** a Google sign-in that goes by the email (a first sign-in, or
+  a link to an existing account) needs Google to have verified the address
+  (`email_verified`). Without it the callback redirects to
+  `/login?error=oauth_failed`, as for any other failure. An identity that's
+  already linked signs in by its Google id, as before.
+- **New:** Sanctum's `AuthenticateSession` on every signed-in route, on
+  `auth/me` and `auth/logout`, and on `/broadcasting/auth`. A session keeps
+  a fingerprint of the password it was signed in with and gets a 401 once
+  the account's password is different. So changing or resetting a password
+  now also signs the account's other sessions out, while the session that
+  changed it stays signed in. A sign-in starts without a fingerprint left in
+  the session from before.
+
+**Deploy:** no migration, nothing new in `.env`.
+
+**Compatibility:** sessions from before the deploy have no fingerprint yet
+and take one on their next request, so the deploy signs nobody out. Someone
+who signed up with a password and later continues with Google loses that
+password (Forgot password sets a new one).
+
 ### Presence is pushed
 
 - **New:** a `PresenceChanged` event (`user_id`, `presence_status`,
