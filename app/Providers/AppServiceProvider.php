@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 
 class AppServiceProvider extends ServiceProvider
@@ -47,6 +48,19 @@ class AppServiceProvider extends ServiceProvider
             if (request()->hasSession()) {
                 request()->session()->forget('password_hash_'.$event->guard);
             }
+        });
+
+        // Password guessing: five tries a minute at one account from one
+        // address, and twenty a minute from one address across accounts.
+        // By the visitor's address, which bootstrap/app.php reads from the
+        // proxy in front.
+        RateLimiter::for('login', function (Request $request): array {
+            $email = Str::lower((string) $request->input('email'));
+
+            return [
+                Limit::perMinute(5)->by("login.account.{$email}|{$request->ip()}"),
+                Limit::perMinute(20)->by("login.address.{$request->ip()}"),
+            ];
         });
 
         // Searching one conversation re-runs as the viewer types into the

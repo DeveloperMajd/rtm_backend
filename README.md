@@ -78,7 +78,7 @@ emailed link.
 | Method | Endpoint | Notes |
 |---|---|---|
 | POST | `/auth/register` | throttled 5/min |
-| POST | `/auth/login` | throttled 5/min |
+| POST | `/auth/login` | throttled 5/min per account and address, 20/min per address |
 | POST | `/auth/logout` | |
 | GET | `/auth/me` | |
 | GET | `/auth/google/redirect` | throttled 10/min |

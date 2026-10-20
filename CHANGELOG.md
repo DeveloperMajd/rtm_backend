@@ -6,6 +6,26 @@ what a deploy runs and whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Rate limits count per visitor
+
+- **Fixed:** behind Caddy and nginx, every visitor's request reached Laravel
+  from nginx's address, so each guest rate limit was one bucket for
+  everybody: five failed sign-ins a minute, from anyone, locked every
+  sign-in out for that minute, and the same went for signing up and
+  resetting a password. Laravel now trusts the proxy in front for
+  `X-Forwarded-For` and `X-Forwarded-Proto` (Caddy sets both and ignores any
+  a visitor sends), so `$request->ip()` is the visitor's address and
+  `$request->secure()` is true over HTTPS.
+- **Changed:** signing in is limited to 5 tries a minute per account and
+  address, and 20 a minute per address across accounts, instead of 5 a
+  minute per address.
+
+**Deploy:** no migration, nothing new in `.env`.
+
+**Compatibility:** no change for clients.
+
+## 2026-10-20
+
 ### Password sign-ups confirm their email
 
 - **New:** signing up with a password emails a link that confirms the
@@ -66,6 +86,8 @@ and take one on their next request, so the deploy signs nobody out. Someone
 who signed up with a password and later continues with Google loses that
 password (Forgot password sets a new one).
 
+## 2026-10-16
+
 ### Presence is pushed
 
 - **New:** a `PresenceChanged` event (`user_id`, `presence_status`,
@@ -89,8 +111,6 @@ password (Forgot password sets a new one).
 
 **Compatibility:** additive. A client that doesn't listen for
 `PresenceChanged` sees statuses as it always did, from the API.
-
-## 2026-10-16
 
 ### Every heartbeat lasts 90 seconds
 
