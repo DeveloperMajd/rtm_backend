@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\ConversationParticipantController;
+use App\Http\Controllers\Api\EmailVerificationController;
 use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\MessageReactionController;
 use App\Http\Controllers\Api\PasswordResetController;
@@ -35,6 +36,22 @@ Route::prefix('auth')->middleware('web')->group(function () {
         Route::post('/forgot-password', 'forgotPassword')->middleware('throttle:5,1,auth.forgotPassword.');
         Route::post('/reset-password', 'reset')->middleware('throttle:5,1,auth.reset.');
     });
+
+    // Open to a signed-in account whose email isn't verified yet: they're
+    // its way out of the "Check your email" screen. (Not an action called
+    // `resend`: Route::controller() would take it for resend-php's global
+    // Resend class, class names being case-insensitive.)
+    Route::controller(EmailVerificationController::class)->prefix('email')
+        ->middleware(['auth:sanctum', AuthenticateSession::class])
+        ->group(function () {
+            Route::post('/verify/{id}/{hash}', 'verify')
+                ->whereUuid('id')
+                ->middleware(['signed:relative', 'throttle:6,1,auth.verifyEmail.'])
+                ->name('verification.verify');
+            Route::post('/verification-notification', 'sendLink')
+                ->middleware('throttle:3,10,auth.resendVerification.')
+                ->name('verification.send');
+        });
 });
 
 // Every limit below names its own bucket (the third throttle argument).
@@ -47,7 +64,11 @@ Route::prefix('auth')->middleware('web')->group(function () {
 // /broadcasting/auth in bootstrap/app.php) ends a session once the
 // account's password is no longer the one it signed in with: after a
 // reset, a change, or a Google sign-in claiming an unverified account.
-Route::middleware(['web', 'auth:sanctum', AuthenticateSession::class])->group(function () {
+//
+// `verified`: an account whose email hasn't been confirmed gets a 403
+// ("Your email address is not verified.") from everything here, so nobody
+// can chat under an address they don't own.
+Route::middleware(['web', 'auth:sanctum', AuthenticateSession::class, 'verified'])->group(function () {
     Route::prefix('conversations')->controller(ConversationController::class)->group(function () {
         Route::get('/', 'index');
         Route::post('/', 'store')->middleware('throttle:10,1,conversations.store.');

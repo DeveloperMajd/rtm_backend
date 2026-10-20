@@ -7,6 +7,7 @@ use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
 use App\Http\Resources\ProfileResource;
 use App\Models\User;
+use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -25,6 +26,11 @@ class AuthController extends Controller
         Auth::login($user);
 
         $request->session()->regenerate();
+
+        // The link that confirms the address (Registered sends it). If it
+        // can't go out now, the account still exists and is signed in: the
+        // "Check your email" screen can send another.
+        rescue(fn () => event(new Registered($user)));
 
         return (new ProfileResource($user))
             ->response()

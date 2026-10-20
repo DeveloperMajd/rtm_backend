@@ -15,10 +15,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     // /broadcasting/auth signs channel subscriptions for the session's user,
-    // so a session AuthenticateSession has ended mustn't get one signed
-    // either (see routes/api.php).
+    // so a session AuthenticateSession has ended, or an account whose email
+    // isn't verified yet, mustn't get one signed either (see routes/api.php).
     ->withBroadcasting(__DIR__.'/../routes/channels.php', [
-        'middleware' => ['web', AuthenticateSession::class],
+        'middleware' => ['web', AuthenticateSession::class, 'verified'],
     ])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->preventRequestForgery(

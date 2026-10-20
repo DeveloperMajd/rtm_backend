@@ -8,11 +8,13 @@ use App\Policies\ConversationPolicy;
 use App\Services\LastSeenVisibility;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 
@@ -74,6 +76,30 @@ class AppServiceProvider extends ServiceProvider
             $query = http_build_query(['token' => $token, 'email' => $user->email]);
 
             return rtrim(config('services.frontend_url'), '/')."/reset-password?{$query}";
+        });
+
+        // The email-verification link goes to the frontend too. It carries
+        // what the API's signed route needs (signed relative to the path, so
+        // the scheme and host the request arrives with don't matter), and
+        // the frontend's /verify-email page posts it back while signed in.
+        VerifyEmail::createUrlUsing(function (User $user): string {
+            $signed = URL::temporarySignedRoute(
+                'verification.verify',
+                now()->addMinutes(config('auth.verification.expire', 60)),
+                ['id' => $user->getKey(), 'hash' => sha1($user->getEmailForVerification())],
+                absolute: false,
+            );
+
+            parse_str((string) parse_url($signed, PHP_URL_QUERY), $signature);
+
+            $query = http_build_query([
+                'id' => $user->getKey(),
+                'hash' => sha1($user->getEmailForVerification()),
+                'expires' => $signature['expires'],
+                'signature' => $signature['signature'],
+            ]);
+
+            return rtrim(config('services.frontend_url'), '/')."/verify-email?{$query}";
         });
     }
 }

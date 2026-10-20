@@ -6,6 +6,35 @@ what a deploy runs and whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Password sign-ups confirm their email
+
+- **New:** signing up with a password emails a link that confirms the
+  address (`MustVerifyEmail` on `User`, Laravel's `VerifyEmail`). The link
+  goes to the frontend's `/verify-email` page, which posts it back to
+  `POST /api/auth/email/verify/{id}/{hash}` (a signature relative to the
+  path, valid 60 minutes) while signed in as that account. Opening the
+  email while signed in as someone else, or signed out, confirms nothing:
+  otherwise whoever signed up with another person's address could have
+  that person verify it for them.
+- **New:** `POST /api/auth/email/verification-notification` sends another
+  link (3 every 10 minutes; a 204 and no email once the address is
+  confirmed).
+- **Changed:** until the address is confirmed, everything under `/api` but
+  `auth/*` answers 403 (`Your email address is not verified.`), and so does
+  `/broadcasting/auth`; `auth/me` and `auth/logout` keep working. Every
+  profile response (`auth/me`, `login`, `register`, `profile`) now has
+  `email_verified_at`. Accounts made or claimed through Google are verified
+  already.
+
+**Deploy:** no migration, nothing new in `.env`. Deploy the frontend first:
+it shows "Check your email" for `email_verified_at: null` and carries on as
+before while the field isn't there, whereas an older frontend would only
+see 403s.
+
+**Compatibility:** breaking for the password accounts that exist today,
+none of which has confirmed its address: on their next visit they get a
+link and confirm it before using the app again.
+
 ### Google sign-in claims an unverified account
 
 - **Fixed (security):** a Google sign-in whose email matches an account that
