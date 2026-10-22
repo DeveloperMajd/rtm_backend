@@ -249,7 +249,8 @@ pull request into it runs Pint and the Pest suite against Postgres and
 Redis service containers, and `composer audit` on the packages production
 runs. On `main`, an SSH deploy that rebuilds, runs migrations, and restarts
 the stack follows only if they all pass. Dependabot
-(`.github/dependabot.yml`) proposes Composer updates weekly. Getting the
+(`.github/dependabot.yml`) proposes minor and patch Composer updates
+weekly; major versions are upgraded by hand. Getting the
 deploy right took three iterations; the second and third fixed real bugs in
 the deploy script itself, not the app:
 
