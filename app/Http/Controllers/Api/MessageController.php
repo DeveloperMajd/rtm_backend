@@ -193,7 +193,7 @@ class MessageController extends Controller
             ->whereNull('muted_at')
             ->update(['archived_at' => null]);
 
-        $message->load(['sender', 'reactions.user:id,name,avatar_url', 'replyTo.sender:id,name,avatar_url', 'attachments']);
+        $message->load(['sender', 'reactions.user:id,name', 'replyTo.sender:id,name,avatar_url', 'attachments']);
 
         broadcast(new MessageSent($message));
 
@@ -208,7 +208,7 @@ class MessageController extends Controller
         $message->edited_at = now();
         $message->save();
 
-        $message->load(['sender', 'reactions.user:id,name,avatar_url', 'replyTo.sender:id,name,avatar_url', 'attachments']);
+        $message->load(['sender', 'reactions.user:id,name', 'replyTo.sender:id,name,avatar_url', 'attachments']);
 
         broadcast(new MessageUpdated($message));
 
@@ -229,7 +229,7 @@ class MessageController extends Controller
         $message->deleted_at = now();
         $message->save();
 
-        $message->load(['sender', 'reactions.user:id,name,avatar_url', 'replyTo.sender:id,name,avatar_url', 'attachments']);
+        $message->load(['sender', 'reactions.user:id,name', 'replyTo.sender:id,name,avatar_url', 'attachments']);
 
         broadcast(new MessageUpdated($message));
 
@@ -405,6 +405,6 @@ class MessageController extends Controller
     {
         return $conversation->messages()
             ->visibleTo($request->user())
-            ->with(['sender:id,name,avatar_url', 'reactions.user:id,name,avatar_url', 'replyTo.sender:id,name,avatar_url', 'attachments']);
+            ->with(['sender:id,name,avatar_url', 'reactions.user:id,name', 'replyTo.sender:id,name,avatar_url', 'attachments']);
     }
 }

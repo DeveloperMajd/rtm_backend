@@ -108,7 +108,13 @@ services:
     env_file: ./.env
     # No --host/--port flags: falls back to REVERB_SERVER_HOST/PORT in .env,
     # keeping one source of truth instead of two places to update.
-    command: ["php", "artisan", "reverb:start"]
+    #
+    # 1 GB rather than php.ini's 128 MB: Reverb buffers an incoming HTTP
+    # request up to max_request_size (512 KB, config/reverb.php) before it
+    # can refuse it, and it holds about 1,000 connections at most. At 128 MB,
+    # some 250 slow requests could have run it out of memory and dropped
+    # everyone connected; now that takes more connections than it can hold.
+    command: ["php", "-d", "memory_limit=1G", "artisan", "reverb:start"]
     networks:
       - rtm-internal
       - web

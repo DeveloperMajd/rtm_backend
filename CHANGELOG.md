@@ -6,6 +6,33 @@ what a deploy runs and whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Large broadcasts arrive
+
+- **Fixed:** every broadcast reaches Reverb as an HTTP request, and Reverb
+  refused one over 10,000 bytes (413): the queued broadcast failed and the
+  message never arrived live, though its sender had been told it was sent.
+  The Pusher SDK encodes the payload twice (an Arabic letter costs 7 bytes)
+  and one request names up to 100 members' channels, so about 1,500 Arabic
+  characters, or the reactions to a busy message, overflowed it. The limit
+  is now 512 KB (`REVERB_MAX_REQUEST_SIZE`), measured against the heaviest
+  broadcasts the app makes (`BroadcastPayloadSizeTest`): every reaction
+  from a 100-member group comes to about 110 KB, and that with a
+  4,000-character Arabic reply and ten photos to 174 KB. A message has no
+  length limit yet, so one long enough can still overflow it.
+- **Changed:** a reaction's `user` no longer carries `avatar_url`. The app
+  never used it, and it was about 40% of a reaction broadcast.
+- **Changed:** Reverb runs with a 1 GB memory limit (`docker-compose.prod.yml`):
+  it buffers a request up to 512 KB before it can refuse it, and at
+  php.ini's 128 MB some 250 slow requests could have run it out of memory.
+
+**Deploy:** no migration, nothing new in `.env`; Reverb is recreated with
+the new limits, as on every deploy.
+
+**Compatibility:** a client that reads `reactions[].user.avatar_url` finds
+nothing there now; the app's own never did.
+
+## 2026-10-22
+
 ### PHP runs with production settings
 
 - **Fixed:** the image shipped no php.ini, so PHP ran on its built-in
@@ -34,8 +61,6 @@ values.
 
 **Compatibility:** no API change. A photo over 2 MB, which used to fail,
 now uploads.
-
-## 2026-10-22
 
 ### The skeleton's npm tools updated, and no major-version proposals
 

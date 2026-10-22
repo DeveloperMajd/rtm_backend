@@ -30,7 +30,7 @@ class SystemMessageService
         $conversation->last_message_at = now();
         $conversation->save();
 
-        $message->load(['sender', 'reactions.user:id,name,avatar_url', 'replyTo.sender:id,name,avatar_url', 'attachments']);
+        $message->load(['sender', 'reactions.user:id,name', 'replyTo.sender:id,name,avatar_url', 'attachments']);
 
         broadcast(new MessageSent($message));
 
