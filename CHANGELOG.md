@@ -6,6 +6,29 @@ what a deploy runs and whether a client already in the field keeps working.
 
 ## Unreleased
 
+### The skeleton's npm tools updated, and no major-version proposals
+
+- **Security:** GitHub's Dependabot alerts also cover package-lock.json:
+  the build tools the Laravel skeleton brought for its welcome page, and
+  concurrently, which `composer run dev` runs. None of it is deployed (the
+  image installs no npm packages), but it runs on a developer's machine.
+  axios goes, as it has from Laravel's own skeleton since April: only
+  resources/js/bootstrap.js used it, to put it on `window` for a page that
+  makes no requests. `npm audit fix` updates the rest within range (vite
+  8.3.5, concurrently 9.2.5 with shell-quote 1.12.0, postcss, nanoid,
+  source-map-js), and a new `.npmrc` stops npm running packages' install
+  scripts, as the skeleton does now.
+- **Changed:** Dependabot no longer proposes major versions: they're
+  upgraded by hand, with what has to move with them. Its first run proposed
+  some that couldn't even install on their own. Security fixes still come
+  whatever version they need.
+
+**Deploy:** nothing changes on the server.
+
+**Compatibility:** no API change.
+
+## 2026-10-22
+
 ### Packages updated, and audited before every deploy
 
 - **Security:** `composer update`, within composer.json's constraints, for
@@ -39,8 +62,6 @@ what a deploy runs and whether a client already in the field keeps working.
 the new packages, as on every deploy.
 
 **Compatibility:** no API change.
-
-## 2026-10-22
 
 ### Removing someone stops their live updates at once
 

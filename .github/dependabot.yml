@@ -1,8 +1,11 @@
 # Dependabot proposes Composer updates once a week, a week's minor and patch
-# releases in one pull request, and each major version in its own. A release
-# is proposed only once it's a week old: time for a broken or hijacked one
-# to be caught and withdrawn first. The pull requests run the tests like any
-# other; nothing merges by itself, and a push to main deploys.
+# releases in one pull request. Major versions aren't proposed: they're
+# upgraded by hand, with whatever has to move with them. Security fixes
+# still come whatever version they need (Dependabot applies update-types
+# ignores to version updates only). A release is proposed only once it's a
+# week old: time for a broken or hijacked one to be caught and withdrawn
+# first. The pull requests run the tests like any other; nothing merges by
+# itself, and a push to main deploys.
 version: 2
 updates:
   - package-ecosystem: composer
@@ -11,6 +14,10 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    ignore:
+      - dependency-name: '*'
+        update-types:
+          - version-update:semver-major
     groups:
       minor-and-patch:
         applies-to: version-updates
