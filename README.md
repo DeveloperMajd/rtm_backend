@@ -233,7 +233,9 @@ PaaS pricing for each.
 - `docker-compose.prod.yml` — four containers built from one
   `Dockerfile` (PHP 8.5-FPM + the extensions Postgres/Redis/etc. need):
   the app itself, a queue worker, Reverb and the presence watcher; plus
-  nginx in front of PHP-FPM, and Redis
+  nginx in front of PHP-FPM, and Redis. PHP runs on `php.ini-production`
+  with uploads up to 16 MB (`docker/php.ini`), and PHP-FPM on a static
+  pool of 20 workers (`docker/php-fpm.conf`)
 - A separate, shared **Caddy** container (not part of this repo — it's
   infra shared with other projects on the same box) terminates TLS and
   reverse-proxies by subdomain
@@ -349,7 +351,7 @@ notable ones that differ from local dev:
 
 | Variable | Why |
 |---|---|
-| `DB_URL` | Neon's **direct** (non-pooled) connection string — this app's connection count is small and bounded (a handful of PHP-FPM workers + one queue worker + Reverb), nowhere near where PgBouncer pooling starts to matter, and migrations need the direct string regardless |
+| `DB_URL` | Neon's **direct** (non-pooled) connection string — this app's connection count is small and bounded (at most 20 PHP-FPM workers + one queue worker + Reverb), nowhere near where PgBouncer pooling starts to matter, and migrations need the direct string regardless |
 | `SESSION_DRIVER` / `CACHE_STORE` / `QUEUE_CONNECTION` = `redis` | the `redis` container on the same VM — see the incidents above for why these run on neither Upstash nor Neon |
 | `REDIS_HOST=redis` | that container's compose service name; no password, since it's only on the stack's internal network, and no `REDIS_URL`, which would override the host |
 | `SESSION_DOMAIN=.rtm.developermajd.com` | shared parent of the frontend and this API — required for the Sanctum session cookie to actually be sent on cross-subdomain requests |

@@ -49,6 +49,14 @@ RUN { \
         echo 'opcache.jit_buffer_size=64M'; \
     } > /usr/local/etc/php/conf.d/opcache-prod.ini
 
+# PHP's recommended production settings (errors logged, never shown in a
+# response), then this app's on top: uploads as large as the API accepts,
+# no version header, and a PHP-FPM pool sized for the VM. Both files are
+# named to load after the image's own, so their settings win.
+RUN cp /usr/local/etc/php/php.ini-production /usr/local/etc/php/php.ini
+COPY docker/php.ini /usr/local/etc/php/conf.d/zz-rtm.ini
+COPY docker/php-fpm.conf /usr/local/etc/php-fpm.d/zz-rtm.conf
+
 WORKDIR /var/www/html
 COPY --from=vendor /app ./
 
