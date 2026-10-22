@@ -5,6 +5,7 @@ use App\Models\Conversation;
 use App\Models\ConversationParticipant;
 use App\Models\Message;
 use App\Models\User;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 
@@ -134,19 +135,29 @@ test('the pointer never moves backwards', function () {
     expect(readPointerOf($conversation, $alice))->toBe($third->id);
 });
 
-test('the conversation hears about it only when the pointer actually moves', function () {
+test('the members hear about it, each on their own channel, only when the pointer actually moves', function () {
     Event::fake([ConversationRead::class]);
-    [$alice, , $conversation] = readReceiptConversation();
+    [$alice, $bob, $conversation] = readReceiptConversation();
     [$first, , $third] = messagesOf($conversation);
 
     $this->actingAs($alice)->postJson("/api/conversations/{$conversation->id}/read", ['message_id' => $third->id]);
     $this->actingAs($alice)->postJson("/api/conversations/{$conversation->id}/read", ['message_id' => $first->id]);
     $this->actingAs($alice)->postJson("/api/conversations/{$conversation->id}/read");
 
+    $members = ["private-App.Models.User.{$alice->id}", "private-App.Models.User.{$bob->id}"];
+    sort($members);
+
     Event::assertDispatchedTimes(ConversationRead::class, 1);
-    Event::assertDispatched(ConversationRead::class, fn (ConversationRead $event) => $event->userId === $alice->id
-        && $event->lastReadMessageId === $third->id
-        && $event->broadcastOn()[0]->name === "private-conversation.{$conversation->id}");
+    Event::assertDispatched(ConversationRead::class, function (ConversationRead $event) use ($alice, $third, $conversation, $members): bool {
+        $channels = array_map(fn (PrivateChannel $channel): string => $channel->name, $event->broadcastOn());
+        sort($channels);
+
+        // It says which conversation: it arrives alongside every other one's.
+        return $event->userId === $alice->id
+            && $event->lastReadMessageId === $third->id
+            && $event->broadcastWith()['conversation_id'] === $conversation->id
+            && $channels === $members;
+    });
 });
 
 test('a message from somewhere else, or not a message id at all, is refused', function () {

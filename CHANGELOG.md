@@ -6,6 +6,37 @@ what a deploy runs and whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Removing someone stops their live updates at once
+
+- **Fixed:** a conversation's messages, edits, reactions, read receipts and
+  typing went out on a `private-conversation.{id}` channel. Reverb checks
+  who may listen to a channel once, when a socket subscribes, so a member
+  who was removed from a group, or left it, kept receiving all of it
+  (attachment links included) until their socket disconnected, and so did
+  the members of a deleted group. These events now go to each current
+  member's own channel (`private-App.Models.User.{id}`), and who that is
+  is worked out as each one goes out, on the queue worker: a member removed
+  in between isn't told, and nobody is once the group is deleted.
+- **Removed:** the `private-conversation.{id}` channel. Subscribing to it is
+  refused (403). `ConversationParticipantsUpdated` and `ConversationDeleted`
+  no longer go out on it either; they already reached everyone's own channel.
+- **Changed:** `ConversationRead` carries `conversation_id`, since it now
+  arrives on the same channel as every other conversation's.
+- **Changed:** Reverb relays no client events ("whispers") any more:
+  `accept_client_events_from` is `none`. The app sends none.
+
+**Deploy:** no migration, nothing new in `.env`. Deploy the frontend first:
+it reads the open conversation's events from the user's own channel.
+
+**Compatibility:** breaking for a client that listens on
+`private-conversation.{id}`: its subscription is refused, and nothing is sent
+there. A tab opened before the frontend deploy keeps its chat list live, but
+not the open conversation, until it's reloaded. Each member's own channel
+now also receives `MessageUpdated`, `MessageReactionUpdated` and
+`ConversationRead` for all of their conversations, not just the open one.
+
+## 2026-10-20
+
 ### Rate limits count per visitor
 
 - **Fixed:** behind Caddy and nginx, every visitor's request reached Laravel
@@ -23,8 +54,6 @@ what a deploy runs and whether a client already in the field keeps working.
 **Deploy:** no migration, nothing new in `.env`.
 
 **Compatibility:** no change for clients.
-
-## 2026-10-20
 
 ### Password sign-ups confirm their email
 

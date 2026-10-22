@@ -11,33 +11,6 @@ use Illuminate\Support\Facades\Event;
 
 uses(RefreshDatabase::class);
 
-// The testing default (BROADCAST_CONNECTION=null) skips channel-authorization
-// entirely — the null driver's auth() is a no-op, so /broadcasting/auth would
-// always return 200 regardless of routes/channels.php. Swap in the
-// Pusher-protocol driver (what Reverb uses under the hood) with dummy local
-// credentials so auth signing runs fully in-process (no network involved) —
-// but only right before the /broadcasting/auth call itself, since the same
-// driver would try (and fail) to really deliver any ShouldBroadcast event
-// raised by setup actions (leaving/kicking) beforehand.
-function useLocalPusherAuth(): void
-{
-    config([
-        'broadcasting.default' => 'reverb',
-        'broadcasting.connections.reverb.key' => 'test-key',
-        'broadcasting.connections.reverb.secret' => 'test-secret',
-        'broadcasting.connections.reverb.app_id' => 'test-app-id',
-    ]);
-
-    // Broadcast::channel() registers against whichever driver is *current*
-    // at call time, and routes/channels.php already ran once at boot against
-    // the testing default (BROADCAST_CONNECTION=null) — so its channels live
-    // on the null driver's registry, not the fresh reverb one just selected
-    // above. Re-running the file (Laravel's own bootstrap uses plain
-    // `require`, not `require_once`, so this is safe) re-registers the same
-    // two channels against the now-current driver.
-    require base_path('routes/channels.php');
-}
-
 /**
  * @return array{0: User, 1: User, 2: Conversation}
  */
@@ -130,30 +103,6 @@ test('a left group\'s preview does not advance with new activity', function () {
     $data = collect($response->json('data'))->firstWhere('id', $conversation->id);
 
     expect($data['latest_message']['event_type'] ?? null)->toBe('member_left');
-});
-
-test('a member who left cannot authorize the conversation broadcast channel', function () {
-    [, $member, $conversation] = groupWithHistory();
-
-    $this->actingAs($member)->deleteJson("/api/conversations/{$conversation->id}/participants/{$member->id}")->assertOk();
-
-    useLocalPusherAuth();
-
-    $this->actingAs($member)->postJson('/broadcasting/auth', [
-        'channel_name' => "private-conversation.{$conversation->id}",
-        'socket_id' => '1234.5678',
-    ])->assertForbidden();
-});
-
-test('an active participant can authorize the conversation broadcast channel', function () {
-    [$admin, , $conversation] = groupWithHistory();
-
-    useLocalPusherAuth();
-
-    $this->actingAs($admin)->postJson('/broadcasting/auth', [
-        'channel_name' => "private-conversation.{$conversation->id}",
-        'socket_id' => '1234.5678',
-    ])->assertOk();
 });
 
 test('a left member does not receive the new-message broadcast fan-out', function () {

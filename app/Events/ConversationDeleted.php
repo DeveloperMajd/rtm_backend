@@ -15,18 +15,19 @@ class ConversationDeleted implements ShouldBroadcast
 
     public function __construct(public readonly Conversation $conversation) {}
 
+    /**
+     * Everyone who has it on their list, members who left included: it goes
+     * from all of them.
+     *
+     * @return array<int, PrivateChannel>
+     */
     public function broadcastOn(): array
     {
-        $participantChannels = $this->conversation
+        return $this->conversation
             ->participants()
             ->pluck('user_id')
             ->map(fn ($userId) => new PrivateChannel('App.Models.User.'.$userId))
             ->all();
-
-        return [
-            new PrivateChannel('conversation.'.$this->conversation->id),
-            ...$participantChannels,
-        ];
     }
 
     public function broadcastWith(): array

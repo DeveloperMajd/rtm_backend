@@ -39,7 +39,10 @@ for the project overview and architecture diagram, or the
   add/kick, a sole admin can't leave without promoting someone first
 - Left/kicked participants keep their row (not deleted) with a
   `left_at` + `left_at_message_id` cutoff — they see history up to the
-  moment they left, frozen, with no further live updates and no way to post
+  moment they left, frozen, with no further live updates and no way to post.
+  A conversation has no broadcast channel of its own: everything in it goes
+  to each current member's own channel, worked out as it goes out, so a
+  removal takes effect on the next event rather than at the next reconnect
 - System messages ("Alice added Bob", "You left") are real `Message` rows
   (`type = 'system'`), so they flow through the same pagination/broadcast
   pipeline as everything else instead of being a bolted-on client-side thing
@@ -99,8 +102,8 @@ emailed link.
 | POST | `/conversations` | throttled 10/min |
 | GET | `/conversations/{id}` | |
 | PATCH | `/conversations/{id}` | rename a group; throttled 20/min |
-| POST | `/conversations/{id}/typing` | current members only; broadcast as `TypingIndicator` (`conversation_id`, `user_id`, `name`) to the conversation and to each other current member's own channel, in one broadcast, so their chat lists show it too; accepted but not broadcast when the sender has typing indicators off; throttled 30/min |
-| POST | `/conversations/{id}/read` | moves the viewer's read pointer to `message_id` (or the newest message without one), never backwards; when it moves and the viewer shares read receipts, broadcasts `ConversationRead` with their pointer and read stretches; 403 for a member who left; throttled 30/min |
+| POST | `/conversations/{id}/typing` | current members only; broadcast as `TypingIndicator` (`conversation_id`, `user_id`, `name`) to each other current member's own channel, in one broadcast, for their chat list and their open room; accepted but not broadcast when the sender has typing indicators off; throttled 30/min |
+| POST | `/conversations/{id}/read` | moves the viewer's read pointer to `message_id` (or the newest message without one), never backwards; when it moves and the viewer shares read receipts, broadcasts `ConversationRead` (`conversation_id`, their pointer and read stretches) to each current member's own channel; 403 for a member who left; throttled 30/min |
 | PATCH | `/conversations/{id}/preferences` | the viewer's own `pinned` / `muted` / `archived` (booleans, at least one); archiving unpins, pinning unarchives; tells the viewer's other tabs (`ConversationPreferencesUpdated` on their user channel); allowed in a group they left; throttled 30/min |
 | GET | `/conversations/{id}/reads` | what the viewer may see of every current member's reading, for "Seen" / "Seen by": `user_id`, `last_read_message_id`, `last_read_at`, `stretches` (the `[from, to]` ranges of their pointer they read with read receipts on; the last one open, `to: null`, while they share) and `viewer_stretches` (the ranges covered while the viewer had theirs on). A read shows only inside both, so it counts only if both people had read receipts on when it was made, however either switches later. `last_read_message_id` never goes past what the viewer may see; current members only; throttled 60/min |
 
