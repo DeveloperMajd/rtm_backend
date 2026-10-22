@@ -6,6 +6,42 @@ what a deploy runs and whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Packages updated, and audited before every deploy
+
+- **Security:** `composer update`, within composer.json's constraints, for
+  the 40 advisories `composer audit --no-dev` reported (13 high).
+  laravel/framework 13.4.0 → 13.38.0 brings among others the fix for a CRLF
+  injection through the `email` validation rule, which signing up and
+  resetting a password use, and for array query parameters getting past
+  signed URL validation, which the email confirmation link relies on.
+  symfony/* 8.0 → 8.1 (mime, http-foundation, http-kernel, routing,
+  mailer), guzzlehttp/guzzle 7.10 → 7.16, guzzlehttp/psr7 2.9 → 2.13,
+  league/commonmark 2.8 → 2.10 and phpseclib 3 → 4 clear the rest; also
+  laravel/reverb 1.10.2 → 1.12.0, laravel/sanctum 4.3.3 and
+  laravel/socialite 5.31.0. Pest stays on 4.
+- **Checked:** since Laravel 13.20, `trustProxies(at: '*')` trusts every
+  hop and takes the first `X-Forwarded-For` entry, where it used to trust
+  only the caller. Behind Caddy, which writes that header itself, there's
+  one entry, so a visitor's address is what it was. Since 13.33 signing in
+  stores the session's password fingerprint itself; the `Login` listener
+  from 2026-10-20 still clears it (it's needed for accounts without a
+  password) and `AuthenticateSession` stores it again on the next request,
+  as before.
+- **Changed:** the deploy waits for `composer audit --locked --no-dev` as
+  well as Pint and the tests: a known advisory in a package production runs
+  stops it until the package is updated, or the advisory is ignored in
+  `config.audit.ignore` with the reason. An abandoned package is reported
+  without stopping it.
+- **New:** Dependabot proposes Composer updates once a week, a week's minor
+  and patch releases in one pull request, each release a week old first.
+
+**Deploy:** no migration, nothing new in `.env`. The image is rebuilt with
+the new packages, as on every deploy.
+
+**Compatibility:** no API change.
+
+## 2026-10-22
+
 ### Removing someone stops their live updates at once
 
 - **Fixed:** a conversation's messages, edits, reactions, read receipts and

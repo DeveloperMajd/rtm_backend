@@ -246,8 +246,10 @@ PaaS pricing for each.
 
 **CI/CD**: `.github/workflows/deploy.yml` — every push to `main` and every
 pull request into it runs Pint and the Pest suite against Postgres and
-Redis service containers. On `main`, an SSH deploy that rebuilds, runs
-migrations, and restarts the stack follows only if they pass. Getting the
+Redis service containers, and `composer audit` on the packages production
+runs. On `main`, an SSH deploy that rebuilds, runs migrations, and restarts
+the stack follows only if they all pass. Dependabot
+(`.github/dependabot.yml`) proposes Composer updates weekly. Getting the
 deploy right took three iterations; the second and third fixed real bugs in
 the deploy script itself, not the app:
 

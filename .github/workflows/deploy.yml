@@ -78,8 +78,26 @@ jobs:
       - name: Tests
         run: php artisan test
 
+  # Known security advisories in the packages production runs (composer.lock
+  # without the dev tools, which aren't deployed). A new one stops the
+  # deploy until the package is updated, or the advisory is ignored in
+  # composer.json's config.audit.ignore, with the reason. An abandoned
+  # package is only reported: it wants replacing, but it isn't a known hole.
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          coverage: none
+
+      - name: Audit packages
+        run: composer audit --locked --no-dev --abandoned=report
+
   deploy:
-    needs: test
+    needs: [test, audit]
     # Only main deploys (the script below always deploys origin/main): a
     # pull request, or a manual run started on another branch, just tests.
     if: github.ref == 'refs/heads/main'
