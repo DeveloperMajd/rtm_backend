@@ -36,7 +36,17 @@ return [
             'options' => [
                 'tls' => [],
             ],
-            'max_request_size' => env('REVERB_MAX_REQUEST_SIZE', 10_000),
+            // Every broadcast reaches Reverb as an HTTP request, and Reverb
+            // refused any over this size (413), so the queued broadcast failed
+            // and the message never arrived live. 10,000 bytes was too few:
+            // the Pusher SDK encodes the payload twice (an Arabic letter
+            // costs 7 bytes), and one request names up to 100 members'
+            // channels. 1,500 Arabic characters already overflowed it; every
+            // reaction from a 100-member group comes to ~110 KB. See
+            // BroadcastPayloadSizeTest. Reverb buffers a request this large
+            // before refusing it, hence its memory limit in
+            // docker-compose.prod.yml.
+            'max_request_size' => env('REVERB_MAX_REQUEST_SIZE', 512_000),
             'scaling' => [
                 'enabled' => env('REVERB_SCALING_ENABLED', false),
                 'channel' => env('REVERB_SCALING_CHANNEL', 'reverb'),
