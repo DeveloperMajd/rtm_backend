@@ -19,20 +19,18 @@ class ConversationParticipantsUpdated implements ShouldBroadcast
         public readonly User $target,
     ) {}
 
+    /**
+     * @return array<int, PrivateChannel>
+     */
     public function broadcastOn(): array
     {
-        $participantChannels = $this->conversation
+        return $this->conversation
             ->participants()
             ->pluck('user_id')
             ->push($this->target->id)
             ->unique()
             ->map(fn ($userId) => new PrivateChannel('App.Models.User.'.$userId))
             ->all();
-
-        return [
-            new PrivateChannel('conversation.'.$this->conversation->id),
-            ...$participantChannels,
-        ];
     }
 
     /**

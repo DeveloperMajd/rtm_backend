@@ -2,6 +2,7 @@
 
 namespace App\Events;
 
+use App\Events\Concerns\BroadcastsToCurrentMembers;
 use App\Models\ConversationParticipant;
 use App\Services\ReadReceiptVisibility;
 use Illuminate\Broadcasting\InteractsWithSockets;
@@ -26,7 +27,7 @@ use Illuminate\Queue\SerializesModels;
  */
 class ConversationRead implements ShouldBroadcast
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use BroadcastsToCurrentMembers, Dispatchable, InteractsWithSockets, SerializesModels;
 
     public readonly string $conversationId;
 
@@ -53,17 +54,19 @@ class ConversationRead implements ShouldBroadcast
      */
     public function broadcastOn(): array
     {
-        return [
-            new PrivateChannel('conversation.'.$this->conversationId),
-        ];
+        return $this->currentMembersOf($this->conversationId);
     }
 
     /**
-     * @return array{user_id: string, last_read_message_id: string, last_read_at: string|null, stretches: list<array{0: string|null, 1: string|null}>}
+     * Says which conversation it's about: it reaches each member on their
+     * own channel, alongside every other conversation's.
+     *
+     * @return array{conversation_id: string, user_id: string, last_read_message_id: string, last_read_at: string|null, stretches: list<array{0: string|null, 1: string|null}>}
      */
     public function broadcastWith(): array
     {
         return [
+            'conversation_id' => $this->conversationId,
             'user_id' => $this->userId,
             'last_read_message_id' => $this->lastReadMessageId,
             'last_read_at' => $this->lastReadAt,

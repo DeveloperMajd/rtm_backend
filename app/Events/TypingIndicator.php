@@ -2,6 +2,7 @@
 
 namespace App\Events;
 
+use App\Events\Concerns\BroadcastsToCurrentMembers;
 use App\Models\User;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
@@ -10,22 +11,18 @@ use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
 /**
- * Someone is typing. Told to the conversation (its open room shows it above
- * the composer) and to each other member's own channel, so their chat list
- * can say so on the conversation's row whether it's open or not. One
- * broadcast whichever way: Reverb gets every channel in the one call.
+ * Someone is typing. Told to each other current member's own channel: their
+ * chat list says so on the conversation's row, and their open room above
+ * the composer. One broadcast however many are told: Reverb gets every
+ * channel in the one call.
  */
 class TypingIndicator implements ShouldBroadcast
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use BroadcastsToCurrentMembers, Dispatchable, InteractsWithSockets, SerializesModels;
 
-    /**
-     * @param  array<int, string>  $recipientIds  the conversation's other current members
-     */
     public function __construct(
         public readonly string $conversationId,
         public readonly User $user,
-        public readonly array $recipientIds = [],
     ) {}
 
     /**
@@ -33,10 +30,7 @@ class TypingIndicator implements ShouldBroadcast
      */
     public function broadcastOn(): array
     {
-        return [
-            new PrivateChannel('conversation.'.$this->conversationId),
-            ...array_map(fn (string $userId): PrivateChannel => new PrivateChannel('App.Models.User.'.$userId), $this->recipientIds),
-        ];
+        return $this->currentMembersOf($this->conversationId, except: $this->user->id);
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace App\Events;
 
+use App\Events\Concerns\BroadcastsToCurrentMembers;
 use App\Http\Resources\MessageResource;
 use App\Models\Message;
 use Illuminate\Broadcasting\InteractsWithSockets;
@@ -12,15 +13,16 @@ use Illuminate\Queue\SerializesModels;
 
 class MessageUpdated implements ShouldBroadcast
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use BroadcastsToCurrentMembers, Dispatchable, InteractsWithSockets, SerializesModels;
 
     public function __construct(public readonly Message $message) {}
 
+    /**
+     * @return array<int, PrivateChannel>
+     */
     public function broadcastOn(): array
     {
-        return [
-            new PrivateChannel('conversation.'.$this->message->conversation_id),
-        ];
+        return $this->currentMembersOf($this->message->conversation_id);
     }
 
     public function broadcastWith(): array

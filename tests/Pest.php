@@ -63,3 +63,30 @@ function sessionFingerprint(string $passwordHash): string
 
     return $guard->hashPasswordForCookie($passwordHash);
 }
+
+/**
+ * The testing default (BROADCAST_CONNECTION=null) skips channel
+ * authorization entirely: the null driver's auth() is a no-op, so
+ * /broadcasting/auth would return 200 whatever routes/channels.php says.
+ * This swaps in the Pusher-protocol driver (what Reverb uses) with dummy
+ * local credentials, so signing runs in-process with no network involved.
+ * Call it right before the /broadcasting/auth request itself: the same
+ * driver would try, and fail, to really deliver any ShouldBroadcast event
+ * raised by the setup before it.
+ */
+function useLocalPusherAuth(): void
+{
+    config([
+        'broadcasting.default' => 'reverb',
+        'broadcasting.connections.reverb.key' => 'test-key',
+        'broadcasting.connections.reverb.secret' => 'test-secret',
+        'broadcasting.connections.reverb.app_id' => 'test-app-id',
+    ]);
+
+    // Broadcast::channel() registers against whichever driver is current at
+    // call time, and routes/channels.php already ran at boot against the
+    // null driver, so its channels live in that driver's registry. Running
+    // the file again (Laravel's bootstrap uses a plain `require`, so this is
+    // safe) registers them on the driver just selected.
+    require base_path('routes/channels.php');
+}

@@ -39,14 +39,14 @@ function typingChannels(TypingIndicator $event): array
     return $names;
 }
 
-test('tells the conversation and each other current member’s own channel, in one broadcast', function () {
+test('tells each other current member’s own channel, in one broadcast', function () {
     Event::fake([TypingIndicator::class]);
     [$alice, $bob, $carol, , $group] = typingGroup();
 
     $this->actingAs($alice)->postJson("/api/conversations/{$group->id}/typing")->assertNoContent();
 
     Event::assertDispatchedTimes(TypingIndicator::class, 1);
-    $expected = ["private-App.Models.User.{$bob->id}", "private-App.Models.User.{$carol->id}", "private-conversation.{$group->id}"];
+    $expected = ["private-App.Models.User.{$bob->id}", "private-App.Models.User.{$carol->id}"];
     sort($expected);
     // Never the typist's own channel, nor someone who has left.
     Event::assertDispatched(TypingIndicator::class, fn (TypingIndicator $event): bool => typingChannels($event) === $expected);
