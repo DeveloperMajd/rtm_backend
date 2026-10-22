@@ -6,6 +6,37 @@ what a deploy runs and whether a client already in the field keeps working.
 
 ## Unreleased
 
+### PHP runs with production settings
+
+- **Fixed:** the image shipped no php.ini, so PHP ran on its built-in
+  defaults: an upload over 2 MB was refused although the API takes
+  attachments up to 15 MB (avatars 5 MB), errors were displayed rather than
+  only logged, and every response said `X-Powered-By: PHP/8.5.12`. The image
+  now starts from PHP's `php.ini-production`, and `docker/php.ini` raises
+  the upload limits to 16 MB a file and 20 MB a request (nginx's own limit)
+  and turns `expose_php` off.
+- **Changed:** PHP-FPM runs a static pool of 20 workers
+  (`docker/php-fpm.conf`), each replaced after 500 requests, where the
+  stock pool ran at most 5 requests at a time. They all start with the
+  container: 20 one-second requests arriving together are answered in
+  about a second, where the dynamic mode, adding workers gradually, took 3
+  to 4.
+- **Checked:** `php.ini-production` no longer fills `$_ENV`
+  (`variables_order = GPCS`). Laravel reads the environment through
+  `getenv()`, and the containers cache config at start, so nothing changes.
+  The command-line processes (queue worker, Reverb, presence watcher) keep
+  running without a time limit.
+
+**Deploy:** no migration, nothing new in `.env`; the image is rebuilt, as on
+every deploy. On the server, `docker exec rtm-app php -i | grep -E
+'upload_max|post_max'` and `docker exec rtm-app php-fpm -tt` show the new
+values.
+
+**Compatibility:** no API change. A photo over 2 MB, which used to fail,
+now uploads.
+
+## 2026-10-22
+
 ### The skeleton's npm tools updated, and no major-version proposals
 
 - **Security:** GitHub's Dependabot alerts also cover package-lock.json:
@@ -26,8 +57,6 @@ what a deploy runs and whether a client already in the field keeps working.
 **Deploy:** nothing changes on the server.
 
 **Compatibility:** no API change.
-
-## 2026-10-22
 
 ### Packages updated, and audited before every deploy
 
