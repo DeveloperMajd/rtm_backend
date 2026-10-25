@@ -84,6 +84,13 @@ class ConversationResource extends JsonResource
                         return 0;
                     }
 
+                    // The chat list counts them in its own query
+                    // (ConversationController::index); one conversation is
+                    // counted here.
+                    if (array_key_exists('unread_count', $this->resource->getAttributes())) {
+                        return (int) $this->resource->getAttributes()['unread_count'];
+                    }
+
                     return $this->messages()
                         ->userMessages()
                         ->where('sender_user_id', '!=', $viewerParticipant->user_id)

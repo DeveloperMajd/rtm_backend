@@ -6,6 +6,25 @@ what a deploy runs and whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Lists cost the same however long they are
+
+- **Changed:** `GET /conversations` counted each conversation's unread
+  messages with a query of its own, and asked Redis for each one's
+  participants' presence separately: 12 conversations took 19 queries where
+  one took 8. The unread counts are now a subquery of the list's own query,
+  and everyone's presence comes from one Redis `MGET` for the whole list
+  (`PresenceService::prime`), as it now does for the contacts list and a
+  group's member list. Each costs the same however long it is
+  (`ConversationListCostTest`). The counts are what they were: other
+  people's messages after the viewer's read pointer, never group events,
+  and none in a group they've left.
+
+**Deploy:** no migration, nothing new in `.env`.
+
+**Compatibility:** no API change.
+
+## 2026-10-22
+
 ### Large broadcasts arrive
 
 - **Fixed:** every broadcast reaches Reverb as an HTTP request, and Reverb
@@ -30,8 +49,6 @@ the new limits, as on every deploy.
 
 **Compatibility:** a client that reads `reactions[].user.avatar_url` finds
 nothing there now; the app's own never did.
-
-## 2026-10-22
 
 ### PHP runs with production settings
 

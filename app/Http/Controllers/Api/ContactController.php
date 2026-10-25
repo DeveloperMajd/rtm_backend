@@ -11,6 +11,7 @@ use App\Models\Contact;
 use App\Models\User;
 use App\Services\ConversationService;
 use App\Services\LastSeenVisibility;
+use App\Services\PresenceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -25,6 +26,7 @@ class ContactController extends Controller
             ->get();
 
         app(LastSeenVisibility::class)->prime($request->user(), $contacts->pluck('id'));
+        app(PresenceService::class)->prime($contacts->pluck('id'));
 
         return ContactResource::collection($contacts);
     }

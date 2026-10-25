@@ -14,13 +14,16 @@ use App\Http\Requests\UpdateConversationRequest;
 use App\Http\Resources\ConversationResource;
 use App\Models\Conversation;
 use App\Models\ConversationParticipant;
+use App\Models\Message;
 use App\Models\User;
 use App\Models\UserSettings;
 use App\Services\ConversationParticipantService;
 use App\Services\ConversationService;
 use App\Services\LastSeenVisibility;
+use App\Services\PresenceService;
 use App\Services\ReadReceiptVisibility;
 use App\Services\SystemMessageService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -43,6 +46,20 @@ class ConversationController extends Controller
                     ->where('viewer.user_id', '=', $userId);
             })
             ->select('conversations.*')
+            // What's waiting to be read, counted here for the whole list
+            // rather than once a conversation: other people's messages after
+            // the viewer's read pointer, never group events, and none in a
+            // group they've left (ConversationResource reads it).
+            ->addSelect(['unread_count' => Message::query()
+                ->selectRaw('count(*)')
+                ->whereColumn('messages.conversation_id', 'conversations.id')
+                ->where('messages.type', 'user')
+                ->whereColumn('messages.sender_user_id', '!=', 'viewer.user_id')
+                ->whereNull('viewer.left_at')
+                ->where(fn (Builder $unread): Builder => $unread
+                    ->whereNull('viewer.last_read_message_id')
+                    ->orWhereColumn('messages.id', '>', 'viewer.last_read_message_id')),
+            ])
             ->with(['lastMessage.sender', 'participants.user'])
             // Pinned first, then the most recently active. For a group the
             // viewer has left, activity stops when they left (LEAST ignores
@@ -53,11 +70,11 @@ class ConversationController extends Controller
             ->orderByDesc('conversations.id')
             ->get();
 
-        // Everyone's "Show last seen" setting, in one go for the whole list.
-        app(LastSeenVisibility::class)->prime(
-            $request->user(),
-            $conversations->flatMap(fn (Conversation $c) => $c->participants->pluck('user_id')),
-        );
+        // Everyone's "Show last seen" setting and presence, in one go each
+        // for the whole list.
+        $participantIds = $conversations->flatMap(fn (Conversation $c) => $c->participants->pluck('user_id'));
+        app(LastSeenVisibility::class)->prime($request->user(), $participantIds);
+        app(PresenceService::class)->prime($participantIds);
 
         return ConversationResource::collection($conversations);
     }
