@@ -44,6 +44,17 @@ class PresenceService
         LUA;
 
     /**
+     * Statuses prime() fetched for the response being built, keyed by user
+     * id, and the request they were fetched for: never answered from in
+     * another, where they could be out of date.
+     *
+     * @var array<string, PresenceStatus>
+     */
+    private array $primed = [];
+
+    private ?int $primedFor = null;
+
+    /**
      * Presence is ephemeral and non-critical — a Redis outage (e.g. the
      * Upstash free-tier's 500K/month command cap) should mean "nobody shows
      * as online," not a 500 on every endpoint that touches a conversation.
@@ -108,29 +119,69 @@ class PresenceService
 
     public function statusOf(string $userId): PresenceStatus
     {
-        return $this->statusFrom($this->safely(fn (Connection $redis) => $redis->get(self::KEY_PREFIX.$userId)));
+        return $this->statusesOf([$userId])[$userId];
     }
 
     /**
-     * Everyone's status in one round trip.
+     * Everyone's status in one round trip, or none at all for those prime()
+     * has already fetched for this request.
      *
      * @param  array<int, string>  $userIds
      * @return array<string, PresenceStatus> keyed by user id
      */
     public function statusesOf(array $userIds): array
     {
+        $primed = $this->primedFor === spl_object_id(request()) ? $this->primed : [];
+        $fetched = $this->fetchStatuses(array_values(array_filter(
+            $userIds,
+            fn (string $userId): bool => ! isset($primed[$userId]),
+        )));
+
+        $statuses = [];
+        foreach ($userIds as $userId) {
+            $statuses[$userId] = $primed[$userId] ?? $fetched[$userId];
+        }
+
+        return $statuses;
+    }
+
+    /**
+     * Fetches everyone's status in one round trip, for statusOf() and
+     * statusesOf() to answer from for the rest of this request: a whole chat
+     * or contacts list at once, rather than a round trip for every row.
+     *
+     * @param  iterable<string>  $userIds
+     */
+    public function prime(iterable $userIds): void
+    {
+        $unique = [];
+        foreach ($userIds as $userId) {
+            $unique[$userId] = $userId;
+        }
+
+        $this->primed = $this->fetchStatuses(array_values($unique));
+        $this->primedFor = spl_object_id(request());
+    }
+
+    /**
+     * One MGET, which (unlike a pipeline) shows up as one command to
+     * Laravel's Redis events.
+     *
+     * @param  list<string>  $userIds
+     * @return array<string, PresenceStatus> keyed by user id
+     */
+    private function fetchStatuses(array $userIds): array
+    {
         if ($userIds === []) {
             return [];
         }
 
-        $values = $this->safely(fn (Connection $redis) => $redis->pipeline(function ($pipe) use ($userIds): void {
-            foreach ($userIds as $userId) {
-                $pipe->get(self::KEY_PREFIX.$userId);
-            }
-        }));
+        $values = $this->safely(fn (Connection $redis) => $redis->mget(
+            array_map(fn (string $userId): string => self::KEY_PREFIX.$userId, $userIds),
+        ));
 
         $statuses = [];
-        foreach (array_values($userIds) as $index => $userId) {
+        foreach ($userIds as $index => $userId) {
             $statuses[$userId] = $this->statusFrom($values[$index] ?? null);
         }
 

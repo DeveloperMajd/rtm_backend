@@ -6,6 +6,7 @@ use App\Models\Conversation;
 use App\Models\User;
 use App\Policies\ConversationPolicy;
 use App\Services\LastSeenVisibility;
+use App\Services\PresenceService;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Auth\Notifications\VerifyEmail;
@@ -29,6 +30,10 @@ class AppServiceProvider extends ServiceProvider
         // Remembers who may see whose last-seen time for one request (or
         // queued job) at a time — never across them.
         $this->app->scoped(LastSeenVisibility::class);
+
+        // Likewise for everyone's presence, which a list fetches in one go
+        // (PresenceService::prime) for its rows to read.
+        $this->app->scoped(PresenceService::class);
     }
 
     /**

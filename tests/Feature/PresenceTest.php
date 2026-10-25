@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\UserSettings;
 use App\Services\PresenceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redis;
 
 uses(RefreshDatabase::class);
@@ -133,6 +134,22 @@ test('statusesOf gives everyone’s status in one go, keyed by user', function (
         $away->id => PresenceStatus::Away,
         $offline->id => PresenceStatus::Offline,
     ])->and($service->statusesOf([]))->toBe([]);
+});
+
+test('a status fetched ahead answers for the request it was fetched in, and no other', function () {
+    $user = User::factory()->create();
+    $service = app(PresenceService::class);
+
+    $service->prime([$user->id]);
+    $service->heartbeat($user);
+
+    // Fetched ahead, while they were offline: this request keeps that
+    // answer rather than asking Redis again.
+    expect($service->statusOf($user->id))->toBe(PresenceStatus::Offline);
+
+    // The next request, or a long-running worker's next job, asks afresh.
+    app()->instance('request', Request::create('/'));
+    expect($service->statusOf($user->id))->toBe(PresenceStatus::Online);
 });
 
 test('the contact directory search surfaces is_online and presence_status per user', function () {
