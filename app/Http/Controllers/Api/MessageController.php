@@ -24,6 +24,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class MessageController extends Controller
 {
@@ -225,9 +226,14 @@ class MessageController extends Controller
             return response()->noContent();
         }
 
-        $message->body = '';
-        $message->deleted_at = now();
-        $message->save();
+        // Its files go with it: no one, the sender included, can open them
+        // after it's deleted (see Message::discardAttachments()).
+        DB::transaction(function () use ($message): void {
+            $message->body = '';
+            $message->deleted_at = now();
+            $message->discardAttachments();
+            $message->save();
+        });
 
         $message->load(['sender', 'reactions.user:id,name', 'replyTo.sender:id,name,avatar_url', 'attachments']);
 

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Jobs\DeleteStoredFiles;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -102,6 +103,32 @@ class Message extends Model
                     ->whereNull('conversation_participants.left_at')
                     ->whereNull('conversations.deleted_at');
             });
+    }
+
+    /**
+     * Lets go of the attachments of a message being deleted. Their rows go
+     * now, so nothing can hand out a link to them again, and the files after
+     * the transaction commits (DeleteStoredFiles), which also ends any link
+     * already handed out.
+     *
+     * attachments_count stays: it says how many the message had, and the app
+     * goes by it to take a deleted message's files out of the shared media.
+     */
+    public function discardAttachments(): void
+    {
+        /** @var list<array{disk: string, path: string}> $files */
+        $files = $this->attachments()->get(['disk', 'path'])
+            ->map(fn (Attachment $attachment): array => ['disk' => $attachment->disk, 'path' => $attachment->path])
+            ->all();
+
+        if ($files === []) {
+            return;
+        }
+
+        $this->attachments()->delete();
+        $this->unsetRelation('attachments');
+
+        DeleteStoredFiles::dispatch($files)->afterCommit();
     }
 
     // Relationships

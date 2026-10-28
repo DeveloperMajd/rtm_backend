@@ -6,6 +6,32 @@ what a deploy runs and whether a client already in the field keeps working.
 
 ## Unreleased
 
+### A message's files go with it, and only its readers can download them
+
+- **Fixed:** `GET /attachments/{id}` let anyone with a participant row
+  download a sent file: a member who had left could still fetch files sent
+  after they did, and files stayed downloadable in a deleted group and
+  after their message was deleted. It now follows the history's own rule
+  (`Message::visibleTo`), with the same answers: 403 outside the
+  conversation, 404 for a deleted group, a message after the viewer left,
+  or a deleted message. An upload not sent yet is still its uploader's
+  alone.
+- **Changed:** deleting a message deletes its files. Their rows go with the
+  delete, so no link to them is handed out again, and the files go from
+  storage on the queue (`DeleteStoredFiles`), which also ends any link
+  already given out. The message's `attachments_count` stays: it says how
+  many files it had, and the app goes by it to take them out of the shared
+  media.
+
+**Deploy:** one migration, `discard_attachments_of_deleted_messages`. It
+removes the rows of files whose message was deleted before this change and
+queues their deletion from storage. Nothing new in `.env`.
+
+**Compatibility:** no change for the app, which already showed a deleted
+message without its attachments.
+
+## 2026-10-25
+
 ### Lists cost the same however long they are
 
 - **Changed:** `GET /conversations` counted each conversation's unread
