@@ -10,11 +10,12 @@ use Illuminate\Auth\Access\Response;
 class ConversationPolicy
 {
     /**
-     * Whether the user takes part in the conversation: reacts, and edits or
-     * deletes their own messages (see MessagePolicy). Only an active member
-     * of a conversation that hasn't been deleted. Someone who left or was
-     * removed keeps reading the history up to then (Message::visibleTo) but
-     * changes nothing in it.
+     * Whether the user takes part in the conversation: reacts, edits or
+     * deletes their own messages (see MessagePolicy), and sees who's in it
+     * now. Only an active member of a conversation that hasn't been deleted.
+     * Someone who left or was removed keeps reading the history up to then
+     * (Message::visibleTo), and the group as it was (left_snapshot), but
+     * changes nothing in it and sees nothing new.
      *
      * A deleted group is gone for everyone (404), as when its history is
      * read; anyone else not taking part is refused (403).

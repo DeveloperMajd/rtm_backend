@@ -6,6 +6,42 @@ what a deploy runs and whether a client already in the field keeps working.
 
 ## Unreleased
 
+### A group you've left stays as it was when you left
+
+- **Fixed:** someone who had left a group, or been removed, kept seeing it
+  as it is now: who's in it (people added since included), their roles,
+  who's online and when each was last seen, its new name after a rename,
+  and an `updated_at` that moved with every message. Every change to who's
+  in it was pushed to them too.
+- **Changed:** leaving or being removed now keeps the group as it was then
+  on the person's own row (`conversation_participants.left_snapshot`: its
+  title, and who was in it with their roles). What they're shown of the
+  group afterwards comes from there: the title, the members (themselves
+  as having left), `participants_count`, and an `updated_at` that stops
+  when they left, like `last_message_at` already did. No presence, no
+  "last seen". A search of their history uses the old name too. Being
+  added back clears it, and the group shows as it is.
+- **Changed:** `ConversationParticipantsUpdated` goes to the group's
+  current members and whoever the change was about, no longer to those
+  who left before. `GET /conversations/{id}/participants` is for current
+  members (`ConversationPolicy::participate`): 403 for someone who left,
+  404 for a deleted group.
+- **Changed:** current members no longer get the presence or "last seen"
+  of people who have left, who appear in the list only as having left.
+
+**Deploy:** one migration, `add_left_snapshot_to_conversation_participants_table`.
+It adds the column and fills it in for everyone who left before, as
+closely as the rows can tell (see the migration): who had joined by then
+and hadn't left before them, with today's roles, and the name the first
+rename after they left changed. Nothing new in `.env`.
+
+**Compatibility:** the app shows a group the viewer has left without
+anyone's presence (frontend `fix/left-group-presence`). Without that, the
+current app shows such a group's members as offline. Either can deploy
+first.
+
+## 2026-10-28
+
 ### Only active members can edit, delete and react
 
 - **Fixed:** editing and deleting only checked that the caller sent the
@@ -25,8 +61,6 @@ what a deploy runs and whether a client already in the field keeps working.
 **Compatibility:** no change for the app, which already offers none of
 these to someone who left. A refusal now comes with a JSON `message`,
 where some had an empty body.
-
-## 2026-10-28
 
 ### A message's files go with it, and only its readers can download them
 
