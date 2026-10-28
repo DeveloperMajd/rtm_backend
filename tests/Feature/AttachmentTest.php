@@ -1,14 +1,17 @@
 <?php
 
 use App\Events\MessageSent;
+use App\Jobs\DeleteStoredFiles;
 use App\Models\Attachment;
 use App\Models\Conversation;
 use App\Models\ConversationParticipant;
 use App\Models\Message;
 use App\Models\User;
+use App\Services\ConversationParticipantService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 
 uses(RefreshDatabase::class);
@@ -252,4 +255,113 @@ test('a deleted message hides its attachments in the resource', function () {
     $deleted = collect($list->json('data'))->firstWhere('id', $messageId);
 
     expect($deleted['attachments'])->toBe([]);
+});
+
+/**
+ * Uploads a file as $sender and sends it in $conversation.
+ *
+ * @return array{attachment: Attachment, message: Message}
+ */
+function sendFile(User $sender, Conversation $conversation, string $name = 'photo.png'): array
+{
+    $attachmentId = test()->actingAs($sender)->postJson('/api/attachments', [
+        'file' => UploadedFile::fake()->image($name),
+    ])->json('data.id');
+
+    $messageId = test()->actingAs($sender)->postJson('/api/messages', [
+        'conversation_id' => $conversation->id,
+        'attachment_ids' => [$attachmentId],
+    ])->assertCreated()->json('data.id');
+
+    return ['attachment' => Attachment::findOrFail($attachmentId), 'message' => Message::findOrFail($messageId)];
+}
+
+test('an upload not sent yet can be downloaded by its uploader alone', function () {
+    [$alice, $bob] = attachmentConversation();
+
+    $attachmentId = $this->actingAs($alice)->postJson('/api/attachments', [
+        'file' => UploadedFile::fake()->image('draft.png'),
+    ])->json('data.id');
+
+    $this->actingAs($alice)->get("/api/attachments/{$attachmentId}")->assertOk();
+    $this->actingAs($bob)->get("/api/attachments/{$attachmentId}")->assertForbidden();
+});
+
+test('a member who left can download what was sent before they did, and nothing after', function () {
+    [$alice, $bob, $conversation] = attachmentConversation();
+    $before = sendFile($alice, $conversation, 'before.png');
+
+    app(ConversationParticipantService::class)->leave($conversation, $bob);
+    $after = sendFile($alice, $conversation, 'after.png');
+
+    $this->actingAs($bob)->get("/api/attachments/{$before['attachment']->id}")
+        ->assertOk()
+        ->assertDownload('before.png');
+    $this->actingAs($bob)->get("/api/attachments/{$after['attachment']->id}")
+        ->assertNotFound();
+});
+
+test('a deleted group’s files can no longer be downloaded', function () {
+    [$alice, $bob, $conversation] = attachmentConversation();
+    $sent = sendFile($alice, $conversation);
+
+    $conversation->forceFill(['deleted_at' => now()])->save();
+
+    foreach ([$alice, $bob] as $member) {
+        $this->actingAs($member)->get("/api/attachments/{$sent['attachment']->id}")->assertNotFound();
+    }
+});
+
+test('deleting a message deletes its files, and its links stop working', function () {
+    [$alice, $bob, $conversation] = attachmentConversation();
+    $sent = sendFile($alice, $conversation);
+    $kept = sendFile($alice, $conversation, 'kept.png');
+    Storage::disk('local')->assertExists($sent['attachment']->path);
+
+    $this->actingAs($alice)->deleteJson("/api/messages/{$sent['message']->id}")->assertNoContent();
+
+    // The queue runs at once in the tests.
+    Storage::disk('local')->assertMissing($sent['attachment']->path);
+    expect(Attachment::find($sent['attachment']->id))->toBeNull();
+    // Still says it had one: the app goes by that to take it out of the
+    // shared media.
+    expect($sent['message']->fresh()->attachments_count)->toBe(1);
+
+    foreach ([$alice, $bob] as $member) {
+        $this->actingAs($member)->get("/api/attachments/{$sent['attachment']->id}")->assertNotFound();
+    }
+
+    // Another message's files are left alone.
+    Storage::disk('local')->assertExists($kept['attachment']->path);
+    $this->actingAs($bob)->get("/api/attachments/{$kept['attachment']->id}")->assertOk();
+});
+
+test('deleting a message without files queues nothing', function () {
+    [$alice, , $conversation] = attachmentConversation();
+    $messageId = $this->actingAs($alice)->postJson('/api/messages', [
+        'conversation_id' => $conversation->id,
+        'body' => 'just words',
+    ])->json('data.id');
+    Queue::fake();
+
+    $this->actingAs($alice)->deleteJson("/api/messages/{$messageId}")->assertNoContent();
+
+    Queue::assertNotPushed(DeleteStoredFiles::class);
+});
+
+// Messages deleted before their files went with them.
+test('a file still held by an already-deleted message cannot be downloaded, and the migration lets it go', function () {
+    [$alice, $bob, $conversation] = attachmentConversation();
+    $old = sendFile($alice, $conversation, 'old.png');
+    $live = sendFile($alice, $conversation, 'live.png');
+    $old['message']->forceFill(['body' => '', 'deleted_at' => now()])->save();
+
+    $this->actingAs($bob)->get("/api/attachments/{$old['attachment']->id}")->assertNotFound();
+
+    (require database_path('migrations/2026_10_26_181704_discard_attachments_of_deleted_messages.php'))->up();
+
+    Storage::disk('local')->assertMissing($old['attachment']->path);
+    expect(Attachment::find($old['attachment']->id))->toBeNull();
+    Storage::disk('local')->assertExists($live['attachment']->path);
+    expect(Attachment::find($live['attachment']->id))->not->toBeNull();
 });

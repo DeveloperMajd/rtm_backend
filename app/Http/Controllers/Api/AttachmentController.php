@@ -108,8 +108,13 @@ class AttachmentController extends Controller
     }
 
     /**
-     * Download the attachment under its original filename. Auth-checked so
-     * links can't be shared outside the conversation.
+     * Download the attachment under its original filename.
+     *
+     * Only for someone who can see its message in the history, by the same
+     * gate (403 outside the conversation, 404 for a deleted group) and the
+     * same rule (Message::visibleTo()): a member who left keeps what was
+     * sent before they did, and a deleted message's files are gone for
+     * everyone (404). An upload not yet sent belongs to its uploader alone.
      *
      * On object storage (R2) this redirects to a fresh short-lived URL that
      * carries the download disposition. Any other disk streams the file
@@ -117,17 +122,28 @@ class AttachmentController extends Controller
      * and without it the local disk's signed URL serves the file inline —
      * clicking Download would navigate away from the app to the file.
      */
-    public function show(Request $request, Attachment $attachment): RedirectResponse|StreamedResponse
+    public function show(Request $request, Attachment $attachment): RedirectResponse|StreamedResponse|JsonResponse
     {
-        $userId = $request->user()->id;
+        $message = $attachment->message;
 
-        $isParticipant = $attachment->message
-            && $attachment->message->conversation->participants()
-                ->where('user_id', $userId)
+        if ($message === null) {
+            if ($attachment->uploaded_by_user_id !== $request->user()->id) {
+                return response()->json(['data' => ['message' => 'Forbidden']], 403);
+            }
+        } else {
+            if ($denied = $this->denyUnlessReadable($request, $message->conversation)) {
+                return $denied;
+            }
+
+            $isVisible = Message::query()
+                ->visibleTo($request->user())
+                ->whereKey($message->id)
+                ->whereNull('deleted_at')
                 ->exists();
 
-        if (! $isParticipant && $attachment->uploaded_by_user_id !== $userId) {
-            abort(403);
+            if (! $isVisible) {
+                return response()->json(['data' => ['message' => 'Attachment not found']], 404);
+            }
         }
 
         /** @var FilesystemAdapter $disk */
