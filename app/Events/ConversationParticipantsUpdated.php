@@ -20,12 +20,18 @@ class ConversationParticipantsUpdated implements ShouldBroadcast
     ) {}
 
     /**
+     * The group's current members, and whoever the change was about: someone
+     * just added, promoted or demoted, or just removed, who learns it this
+     * way. Not the members who left before: they see the group as it was
+     * when they left, so who comes and goes since is none of theirs.
+     *
      * @return array<int, PrivateChannel>
      */
     public function broadcastOn(): array
     {
         return $this->conversation
             ->participants()
+            ->whereNull('left_at')
             ->pluck('user_id')
             ->push($this->target->id)
             ->unique()

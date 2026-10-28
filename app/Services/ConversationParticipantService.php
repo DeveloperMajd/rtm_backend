@@ -31,6 +31,7 @@ class ConversationParticipantService
             $existing->update([
                 'left_at' => null,
                 'left_at_message_id' => null,
+                'left_snapshot' => null,
                 'role' => 'participant',
                 'joined_at' => now(),
             ]);
@@ -74,6 +75,7 @@ class ConversationParticipantService
         $conversation->participants()->where('user_id', $target->id)->update([
             'left_at' => $message->created_at,
             'left_at_message_id' => $message->id,
+            'left_snapshot' => $this->snapshotFor($conversation, $target),
         ]);
     }
 
@@ -92,6 +94,7 @@ class ConversationParticipantService
         $conversation->participants()->where('user_id', $actor->id)->update([
             'left_at' => $message->created_at,
             'left_at_message_id' => $message->id,
+            'left_snapshot' => $this->snapshotFor($conversation, $actor),
         ]);
     }
 
@@ -112,6 +115,33 @@ class ConversationParticipantService
         );
 
         return $participant;
+    }
+
+    /**
+     * The group as someone leaving it last sees it, kept on their row: its
+     * title and everyone else still in it, with their roles. What they're
+     * shown of the group from then on (ConversationResource) comes from
+     * here, so nothing that happens after they've gone reaches them: not who
+     * joins or leaves, not a new admin, not a new name.
+     *
+     * Encoded here rather than by the model's cast: it's written with a
+     * query-builder update, which doesn't cast.
+     */
+    private function snapshotFor(Conversation $conversation, User $leaving): string
+    {
+        $members = $conversation->participants()
+            ->whereNull('left_at')
+            ->where('user_id', '!=', $leaving->id)
+            ->orderBy('id')
+            ->get(['user_id', 'role']);
+
+        return json_encode([
+            'title' => $conversation->title,
+            'members' => $members->map(fn (ConversationParticipant $member): array => [
+                'user_id' => $member->user_id,
+                'role' => $member->role,
+            ])->all(),
+        ], JSON_THROW_ON_ERROR);
     }
 
     public function rename(Conversation $conversation, User $actor, string $newTitle): Conversation

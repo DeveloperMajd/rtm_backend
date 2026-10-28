@@ -140,7 +140,8 @@ Route::middleware(['web', 'auth:sanctum', AuthenticateSession::class, 'verified'
     });
 
     Route::prefix('conversations/{conversation}/participants')->controller(ConversationParticipantController::class)->group(function () {
-        Route::get('/', 'index');
+        // Current members only (ConversationParticipantController::index).
+        Route::get('/', 'index')->can('participate', 'conversation');
         Route::post('/', 'store')->middleware('throttle:20,1,participants.store.');
         Route::patch('/{user}', 'update')->middleware('throttle:20,1,participants.update.');
         Route::delete('/{user}', 'destroy');

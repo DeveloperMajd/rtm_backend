@@ -3,7 +3,9 @@
 namespace App\Http\Resources;
 
 use App\Enums\PresenceStatus;
+use App\Models\ConversationParticipant;
 use App\Models\Message;
+use App\Models\User;
 use App\Services\LastSeenVisibility;
 use App\Services\PresenceService;
 use Illuminate\Http\Request;
@@ -18,20 +20,25 @@ class ConversationResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $statuses = $this->relationLoaded('participants')
-            ? app(PresenceService::class)->statusesOf($this->participants->pluck('user_id')->all())
-            : [];
-        $statusOf = fn (string $userId): PresenceStatus => $statuses[$userId] ?? PresenceStatus::Offline;
-
         $viewerParticipant = $this->relationLoaded('participants')
             ? $this->participants->firstWhere('user_id', $request->user()->id)
             : null;
         $viewerLeftAt = $viewerParticipant?->left_at;
+        // A group the viewer has left is shown as it was when they left
+        // (left_snapshot): who was in it, its title, and nothing live.
+        $hasLeft = $viewerLeftAt !== null;
+
+        // Presence is only for people still in it, and only to a viewer
+        // still in it.
+        $statuses = $this->relationLoaded('participants') && ! $hasLeft
+            ? app(PresenceService::class)->statusesOf($this->participants->whereNull('left_at')->pluck('user_id')->all())
+            : [];
+        $statusOf = fn (string $userId): PresenceStatus => $statuses[$userId] ?? PresenceStatus::Offline;
 
         return [
             'id' => $this->id,
             'type' => $this->type,
-            'title' => $this->title,
+            'title' => $viewerParticipant !== null ? $viewerParticipant->titleOf($this->resource) : $this->title,
             'created_by_user_id' => $this->created_by_user_id,
             // A group you've left stops advancing for you — everything below
             // is capped at the moment you left, so no *new* activity leaks in.
@@ -61,21 +68,24 @@ class ConversationResource extends JsonResource
                 $this->relationLoaded('participants'),
                 fn () => $this->resolveLatestMessage($viewerParticipant?->left_at_message_id),
             ),
-            'participants' => $this->whenLoaded('participants', function () use ($statusOf, $request) {
-                return $this->participants->map(fn ($p) => [
-                    'user_id' => $p->user_id,
-                    'name' => $p->user?->name,
-                    'avatar_url' => $p->user?->avatar_url,
-                    'role' => $p->role,
-                    'left_at' => $p->left_at,
-                    'is_online' => $statusOf($p->user_id)->isOnline(),
-                    'presence_status' => $statusOf($p->user_id),
-                    'last_seen_at' => app(LastSeenVisibility::class)->lastSeenFor($request->user(), $p->user),
-                ]);
+            'participants' => $this->whenLoaded('participants', function () use ($hasLeft, $viewerParticipant, $statusOf, $request) {
+                if ($hasLeft) {
+                    return $this->participantsAsLeft($viewerParticipant);
+                }
+
+                return $this->participants->map(fn (ConversationParticipant $p): array => $this->participantEntry(
+                    $p,
+                    $p->role,
+                    $p->left_at,
+                    $p->left_at === null ? $statusOf($p->user_id) : null,
+                    $request->user(),
+                ))->all();
             }),
             'participants_count' => $this->whenLoaded(
                 'participants',
-                fn () => $this->participants->whereNull('left_at')->count(),
+                fn () => $hasLeft
+                    ? count($viewerParticipant->left_snapshot['members'] ?? [])
+                    : $this->participants->whereNull('left_at')->count(),
             ),
             'unread_count' => $this->when(
                 $this->relationLoaded('participants'),
@@ -116,7 +126,50 @@ class ConversationResource extends JsonResource
             'muted_at' => $this->when($this->relationLoaded('participants'), fn () => $viewerParticipant?->muted_at),
             'archived_at' => $this->when($this->relationLoaded('participants'), fn () => $viewerParticipant?->archived_at),
             'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
+            // It moves with every message: for a group the viewer has left,
+            // it stops when they did, like last_message_at.
+            'updated_at' => $hasLeft ? min($this->updated_at, $viewerLeftAt) : $this->updated_at,
+        ];
+    }
+
+    /**
+     * The members as a viewer who left last saw them (left_snapshot): who
+     * was in the group then, with the role each had, and the viewer, as
+     * having left. Nobody who joined since, and nothing live: no presence,
+     * no "last seen".
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function participantsAsLeft(ConversationParticipant $viewer): array
+    {
+        $rows = $this->participants->keyBy('user_id');
+
+        return collect($viewer->left_snapshot['members'] ?? [])
+            ->filter(fn (array $member): bool => $rows->has($member['user_id']))
+            ->map(fn (array $member): array => $this->participantEntry($rows[$member['user_id']], $member['role'], null, null, null))
+            ->push($this->participantEntry($viewer, $viewer->role, $viewer->left_at, null, null))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * One person on the participant list. Without a status (someone who
+     * isn't in the group, or a viewer who isn't), they're shown offline with
+     * no "last seen".
+     *
+     * @return array<string, mixed>
+     */
+    private function participantEntry(ConversationParticipant $participant, string $role, mixed $leftAt, ?PresenceStatus $status, ?User $viewer): array
+    {
+        return [
+            'user_id' => $participant->user_id,
+            'name' => $participant->user?->name,
+            'avatar_url' => $participant->user?->avatar_url,
+            'role' => $role,
+            'left_at' => $leftAt,
+            'is_online' => $status?->isOnline() ?? false,
+            'presence_status' => $status ?? PresenceStatus::Offline,
+            'last_seen_at' => $status !== null ? app(LastSeenVisibility::class)->lastSeenFor($viewer, $participant->user) : null,
         ];
     }
 

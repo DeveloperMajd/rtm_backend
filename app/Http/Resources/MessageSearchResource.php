@@ -15,9 +15,11 @@ class MessageSearchResource extends JsonResource
     public function toArray(Request $request): array
     {
         $conversation = $this->conversation;
+        $viewer = $conversation->participants->firstWhere('user_id', $request->user()->id);
 
+        // A group the viewer has left goes by the title it had then.
         $conversationTitle = $conversation->type === 'group'
-            ? $conversation->title
+            ? ($viewer !== null ? $viewer->titleOf($conversation) : $conversation->title)
             : $conversation->participants
                 ->first(fn ($participant) => $participant->user_id !== $request->user()->id)
                 ?->user?->name;

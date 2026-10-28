@@ -18,16 +18,14 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class ConversationParticipantController extends Controller
 {
-    public function index(Request $request, Conversation $conversation): AnonymousResourceCollection|JsonResponse
+    /**
+     * Who's in the group now, with their presence: for its current members
+     * (authorized on the route, ConversationPolicy::participate). Someone who
+     * left has the group's members as they were then on the conversation
+     * itself (ConversationResource).
+     */
+    public function index(Request $request, Conversation $conversation): AnonymousResourceCollection
     {
-        $isParticipant = $conversation->participants()
-            ->where('user_id', $request->user()->id)
-            ->exists();
-
-        if (! $isParticipant) {
-            return response()->json(['data' => ['message' => 'Forbidden']], 403);
-        }
-
         $participants = $conversation->participants()->with('user')->get();
 
         app(LastSeenVisibility::class)->prime($request->user(), $participants->pluck('user_id'));

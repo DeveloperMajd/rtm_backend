@@ -31,6 +31,7 @@ class ConversationParticipant extends Model
         'archived_at',
         'receipt_stretches',
         'viewer_stretches',
+        'left_snapshot',
     ];
 
     /**
@@ -47,7 +48,21 @@ class ConversationParticipant extends Model
             'archived_at' => 'datetime',
             'receipt_stretches' => 'array',
             'viewer_stretches' => 'array',
+            'left_snapshot' => 'array',
         ];
+    }
+
+    /**
+     * The group's title as this member sees it: as it was when they left
+     * (left_snapshot), or as it is while they're in it.
+     */
+    public function titleOf(Conversation $conversation): ?string
+    {
+        if ($this->left_at !== null && $this->left_snapshot !== null) {
+            return $this->left_snapshot['title'] ?? null;
+        }
+
+        return $conversation->title;
     }
 
     /**
