@@ -6,6 +6,28 @@ what a deploy runs and whether a client already in the field keeps working.
 
 ## Unreleased
 
+### Only active members can edit, delete and react
+
+- **Fixed:** editing and deleting only checked that the caller sent the
+  message, and reacting only that they had ever been in the conversation.
+  A member who had left or been removed could still rewrite or delete
+  their messages and react, in a deleted group too, though the app said
+  they couldn't. All four (`PATCH` and `DELETE /messages/{id}`, `POST` and
+  `DELETE /messages/{id}/reactions`) now need an active member of a
+  conversation that's still there (`ConversationPolicy::participate`,
+  checked on the routes through `MessagePolicy`): 403 for anyone else, 404
+  for a deleted group, as when its history is read.
+- **Changed:** a group event line and a deleted message take no reactions
+  (403). The app never offered either.
+
+**Deploy:** no migration, nothing new in `.env`.
+
+**Compatibility:** no change for the app, which already offers none of
+these to someone who left. A refusal now comes with a JSON `message`,
+where some had an empty body.
+
+## 2026-10-28
+
 ### A message's files go with it, and only its readers can download them
 
 - **Fixed:** `GET /attachments/{id}` let anyone with a participant row

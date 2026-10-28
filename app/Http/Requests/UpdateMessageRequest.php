@@ -10,14 +10,11 @@ use Illuminate\Validation\Validator;
 class UpdateMessageRequest extends FormRequest
 {
     /**
-     * Determine if the user is authorized to make this request.
+     * Authorized on the route (MessagePolicy::update).
      */
     public function authorize(): bool
     {
-        /** @var Message $message */
-        $message = $this->route('message');
-
-        return $message->sender_user_id === $this->user()->id;
+        return true;
     }
 
     /**

@@ -28,14 +28,6 @@ class MessageReactionController extends Controller
 
     public function destroy(Request $request, Message $message, string $reaction): Response
     {
-        $isParticipant = $message->conversation->participants()
-            ->where('user_id', $request->user()->id)
-            ->exists();
-
-        if (! $isParticipant) {
-            return response()->noContent(403);
-        }
-
         $message->reactions()
             ->where('user_id', $request->user()->id)
             ->where('reaction', $reaction)

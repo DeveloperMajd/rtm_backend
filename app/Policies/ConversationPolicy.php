@@ -5,9 +5,31 @@ namespace App\Policies;
 use App\Models\Conversation;
 use App\Models\ConversationParticipant;
 use App\Models\User;
+use Illuminate\Auth\Access\Response;
 
 class ConversationPolicy
 {
+    /**
+     * Whether the user takes part in the conversation: reacts, and edits or
+     * deletes their own messages (see MessagePolicy). Only an active member
+     * of a conversation that hasn't been deleted. Someone who left or was
+     * removed keeps reading the history up to then (Message::visibleTo) but
+     * changes nothing in it.
+     *
+     * A deleted group is gone for everyone (404), as when its history is
+     * read; anyone else not taking part is refused (403).
+     */
+    public function participate(User $user, Conversation $conversation): Response
+    {
+        if ($conversation->deleted_at !== null) {
+            return Response::denyAsNotFound('Conversation not found.');
+        }
+
+        return $this->activeParticipant($conversation, $user)
+            ? Response::allow()
+            : Response::deny('You’re not a member of this conversation.');
+    }
+
     /**
      * Determine whether the user can add a participant to the conversation.
      */
