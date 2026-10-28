@@ -3,8 +3,10 @@
 namespace App\Providers;
 
 use App\Models\Conversation;
+use App\Models\Message;
 use App\Models\User;
 use App\Policies\ConversationPolicy;
+use App\Policies\MessagePolicy;
 use App\Services\LastSeenVisibility;
 use App\Services\PresenceService;
 use Illuminate\Auth\Events\Login;
@@ -42,6 +44,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Gate::policy(Conversation::class, ConversationPolicy::class);
+        Gate::policy(Message::class, MessagePolicy::class);
 
         // A sign-in starts without a password fingerprint from before it.
         // AuthenticateSession (routes/api.php) ends a session whose stored

@@ -218,10 +218,6 @@ class MessageController extends Controller
 
     public function destroy(Request $request, Message $message): Response
     {
-        if ($message->sender_user_id !== $request->user()->id) {
-            return response()->noContent(403);
-        }
-
         if ($message->deleted_at !== null) {
             return response()->noContent();
         }

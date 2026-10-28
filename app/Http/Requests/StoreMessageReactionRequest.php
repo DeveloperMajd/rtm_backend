@@ -3,7 +3,6 @@
 namespace App\Http\Requests;
 
 use App\Enums\MessageReactionType;
-use App\Models\Message;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -11,16 +10,11 @@ use Illuminate\Validation\Rule;
 class StoreMessageReactionRequest extends FormRequest
 {
     /**
-     * Determine if the user is authorized to make this request.
+     * Authorized on the route (MessagePolicy::react).
      */
     public function authorize(): bool
     {
-        /** @var Message $message */
-        $message = $this->route('message');
-
-        return $message->conversation->participants()
-            ->where('user_id', $this->user()->id)
-            ->exists();
+        return true;
     }
 
     /**
