@@ -7,7 +7,6 @@ use App\Events\PresenceChanged;
 use App\Models\Contact;
 use App\Models\ConversationParticipant;
 use App\Models\User;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Redis\Connections\Connection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
@@ -202,7 +201,8 @@ class PresenceService
                 ->select('conversation_id')
                 ->where('user_id', $userId)
                 ->whereNull('left_at'))
-            ->whereHas('conversation', fn (Builder $conversations) => $conversations->visible())
+            // Not in a deleted group: the relation leaves those out.
+            ->whereHas('conversation')
             ->whereNull('left_at')
             ->where('user_id', '!=', $userId)
             ->pluck('user_id');

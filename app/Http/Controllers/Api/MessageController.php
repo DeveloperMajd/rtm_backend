@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Events\MessageSent;
 use App\Events\MessageUpdated;
-use App\Http\Controllers\Concerns\GuardsConversationHistory;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\MessageContextRequest;
 use App\Http\Requests\MessageHistoryRequest;
@@ -25,17 +24,17 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 
 class MessageController extends Controller
 {
-    use GuardsConversationHistory;
-
+    /**
+     * Authorized on the route (ConversationPolicy::view): 403 outside the
+     * conversation, 404 for a deleted group. What a member who left sees
+     * stops where they did (Message::visibleTo).
+     */
     public function index(MessageHistoryRequest $request, Conversation $conversation): AnonymousResourceCollection|JsonResponse
     {
-        if ($denied = $this->denyUnlessReadable($request, $conversation)) {
-            return $denied;
-        }
-
         // Keyset ("cursor") pagination, not offset. A conversation grows at
         // the newest end while it is being read, and `?page=N` is an offset
         // from that end — so every message that arrives shifts every page
@@ -108,17 +107,14 @@ class MessageController extends Controller
      * for each direction so the client can keep reading either way through
      * the ordinary history endpoint.
      *
-     * 403 for someone who isn't in the conversation; 404 when the message
-     * isn't in it, falls after the viewer left, or the group was deleted. A
-     * deleted message is still returned, as the same "deleted" placeholder
-     * the history shows, so a jump to one lands somewhere.
+     * 403 for someone who isn't in the conversation and 404 for a deleted
+     * group (authorized on the route, ConversationPolicy::view); 404 when
+     * the message isn't in it or falls after the viewer left. A deleted
+     * message is still returned, as the same "deleted" placeholder the
+     * history shows, so a jump to one lands somewhere.
      */
     public function context(MessageContextRequest $request, Conversation $conversation, Message $message): AnonymousResourceCollection|JsonResponse
     {
-        if ($denied = $this->denyUnlessReadable($request, $conversation)) {
-            return $denied;
-        }
-
         $readable = $this->readableMessages($request, $conversation);
 
         if ($message->conversation_id !== $conversation->id || ! (clone $readable)->whereKey($message->id)->exists()) {
@@ -258,21 +254,17 @@ class MessageController extends Controller
      * left, whose view of the conversation stops where they did. Only people
      * still in the conversation are listed.
      *
-     * The same gate as the history endpoints: 403 outside the conversation,
-     * and 404 for a deleted group, for a message after the viewer left, and
-     * for a group event line, which has no sender and nothing to say.
+     * The same gate as the history (authorized on the route,
+     * MessagePolicy::view): 403 outside the conversation, and 404 for a
+     * deleted group and for a message after the viewer left. Also 404 for a
+     * group event line, which has no sender and nothing to say.
      */
     public function info(Request $request, Message $message, ReadReceiptVisibility $receipts): JsonResponse
     {
         $conversation = $message->conversation;
-
-        if ($denied = $this->denyUnlessReadable($request, $conversation)) {
-            return $denied;
-        }
-
         $viewer = $request->user();
 
-        if ($message->type !== 'user' || ! Message::query()->visibleTo($viewer)->whereKey($message->id)->exists()) {
+        if ($message->type !== 'user') {
             return response()->json(['data' => ['message' => 'Message not found']], 404);
         }
 
@@ -346,15 +338,14 @@ class MessageController extends Controller
             ->whereRaw("search_vector @@ {$tsQuery}", [$query, $query]);
 
         if ($conversationId !== null) {
+            // A deleted group isn't found either.
             $conversation = Conversation::find($conversationId);
 
             if (! $conversation) {
                 return response()->json(['data' => ['message' => 'Conversation not found']], 404);
             }
 
-            if ($denied = $this->denyUnlessReadable($request, $conversation)) {
-                return $denied;
-            }
+            Gate::authorize('view', $conversation);
 
             $matches->where('conversation_id', $conversation->id);
         }

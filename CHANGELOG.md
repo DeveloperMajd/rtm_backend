@@ -6,6 +6,35 @@ what a deploy runs and whether a client already in the field keeps working.
 
 ## Unreleased
 
+### One access rule, and a deleted group is gone everywhere
+
+- **Fixed:** a deleted group could still be renamed, have people added,
+  removed or made admin, be deleted again, be left, and be typed in. Who
+  may do what in a conversation was checked by hand in about 14 places,
+  with three different meanings, and those had drifted apart.
+- **Changed:** `Conversation` uses Laravel's `SoftDeletes` (the
+  `deleted_at` column it already had), so a deleted group is gone from
+  every query, and every route that binds one answers 404. Three policy
+  rules replace the hand-written checks, applied on the routes with
+  `->can()`: `view` (anyone with a place in it, members who left
+  included), `participate` (current members) and `manage` (a group's
+  current admins); `MessagePolicy` builds on them for a message's routes,
+  which reach a deleted group through the message and answer 404 too.
+  Anyone else gets 403.
+- **Changed:** a few answers line up with the rest: sending to a deleted
+  group is 404 (was 403), leaving it is 404 (it went through, and
+  recorded a "left" line in a deleted group), taking a message of a
+  deleted group off Saved is 404 (was 204), and a member who has already
+  left gets 403 for leaving again (was 404). A refusal on these routes
+  now comes as Laravel's own JSON `message`.
+
+**Deploy:** no migration, nothing new in `.env`.
+
+**Compatibility:** no change for the app, which reads these answers by
+status code (403, 404) and offers none of them for a deleted group.
+
+## 2026-10-28
+
 ### A group you've left stays as it was when you left
 
 - **Fixed:** someone who had left a group, or been removed, kept seeing it
@@ -39,8 +68,6 @@ rename after they left changed. Nothing new in `.env`.
 anyone's presence (frontend `fix/left-group-presence`). Without that, the
 current app shows such a group's members as offline. Either can deploy
 first.
-
-## 2026-10-28
 
 ### Only active members can edit, delete and react
 

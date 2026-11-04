@@ -43,12 +43,12 @@ class ConversationService
     }
 
     /**
-     * Delete a group for every member. Soft — the row stays, per this
-     * project's tombstone-column convention — but becomes invisible and
-     * inaccessible to everyone, not just the admin who deleted it.
+     * Delete a group for every member. A soft delete: the row stays, but the
+     * group is gone from every query and route, for everyone, not just the
+     * admin who deleted it (see Conversation).
      */
     public function deleteGroup(Conversation $conversation): void
     {
-        $conversation->forceFill(['deleted_at' => now()])->save();
+        $conversation->delete();
     }
 }

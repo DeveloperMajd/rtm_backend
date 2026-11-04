@@ -53,10 +53,12 @@ class ConversationParticipantController extends Controller
     }
 
     /**
-     * A participant leaves on their own. Anyone may leave a group, but the
-     * sole active admin must promote someone else first if other active
-     * members remain. Direct conversations keep the old hard-delete
-     * behaviour — there is no "left" state to show for a 1:1 chat.
+     * A participant leaves on their own: a current member (authorized on
+     * the route, ConversationPolicy::participate), and only themselves.
+     * Anyone may leave a group, but the sole active admin must promote
+     * someone else first if other active members remain. Direct
+     * conversations keep the old hard-delete behaviour — there is no "left"
+     * state to show for a 1:1 chat.
      */
     public function destroy(
         Request $request,
@@ -68,14 +70,7 @@ class ConversationParticipantController extends Controller
             return response()->json(['data' => ['message' => 'Forbidden']], 403);
         }
 
-        $participant = $conversation->participants()
-            ->where('user_id', $user->id)
-            ->whereNull('left_at')
-            ->first();
-
-        if (! $participant) {
-            return response()->json(['data' => ['message' => 'User is not a participant']], 404);
-        }
+        $participant = $conversation->participants()->active()->where('user_id', $user->id)->sole();
 
         if ($conversation->type === 'group') {
             if ($participant->role === 'admin' && $this->wouldLeaveGroupWithoutAdmin($conversation, $user)) {
@@ -92,16 +87,16 @@ class ConversationParticipantController extends Controller
         return response()->json(['data' => ['message' => 'Left conversation successfully']], 200);
     }
 
+    /**
+     * An admin removes someone (authorized on the route,
+     * ConversationPolicy::kickParticipant).
+     */
     public function kick(
         Request $request,
         Conversation $conversation,
         User $user,
         ConversationParticipantService $service,
     ): JsonResponse {
-        if (! $request->user()->can('kickParticipant', [$conversation, $user])) {
-            return response()->json(['data' => ['message' => 'Forbidden']], 403);
-        }
-
         $service->kickParticipant($conversation, $request->user(), $user);
 
         $conversation->load('participants.user');

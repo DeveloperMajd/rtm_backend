@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Concerns\GuardsConversationHistory;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\SharedAttachmentsRequest;
 use App\Http\Requests\StoreAttachmentRequest;
@@ -17,13 +16,12 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AttachmentController extends Controller
 {
-    use GuardsConversationHistory;
-
     /**
      * A conversation's shared media for its info panel: the photos
      * (`kind=media`) or the other files (`kind=files`), newest first, up to
@@ -35,14 +33,11 @@ class AttachmentController extends Controller
      * message deleted since, whose attachments the history doesn't show
      * either. Uploads not yet sent aren't in any conversation.
      *
-     * 403 outside the conversation, 404 for a deleted group, as the history.
+     * 403 outside the conversation, 404 for a deleted group, as the history
+     * (authorized on the route, ConversationPolicy::view).
      */
-    public function index(SharedAttachmentsRequest $request, Conversation $conversation): AnonymousResourceCollection|JsonResponse
+    public function index(SharedAttachmentsRequest $request, Conversation $conversation): AnonymousResourceCollection
     {
-        if ($denied = $this->denyUnlessReadable($request, $conversation)) {
-            return $denied;
-        }
-
         $limit = max(1, min((int) $request->query('limit', 12), 50));
         $beforeId = $request->validated('before_id');
 
@@ -110,11 +105,12 @@ class AttachmentController extends Controller
     /**
      * Download the attachment under its original filename.
      *
-     * Only for someone who can see its message in the history, by the same
-     * gate (403 outside the conversation, 404 for a deleted group) and the
-     * same rule (Message::visibleTo()): a member who left keeps what was
-     * sent before they did, and a deleted message's files are gone for
-     * everyone (404). An upload not yet sent belongs to its uploader alone.
+     * Only for someone who can see its message in the history
+     * (MessagePolicy::view: 403 outside the conversation, 404 for a deleted
+     * group or a message after the viewer left): a member who left keeps
+     * what was sent before they did, and a deleted message's files are gone
+     * for everyone (404). An upload not yet sent belongs to its uploader
+     * alone.
      *
      * On object storage (R2) this redirects to a fresh short-lived URL that
      * carries the download disposition. Any other disk streams the file
@@ -131,17 +127,9 @@ class AttachmentController extends Controller
                 return response()->json(['data' => ['message' => 'Forbidden']], 403);
             }
         } else {
-            if ($denied = $this->denyUnlessReadable($request, $message->conversation)) {
-                return $denied;
-            }
+            Gate::authorize('view', $message);
 
-            $isVisible = Message::query()
-                ->visibleTo($request->user())
-                ->whereKey($message->id)
-                ->whereNull('deleted_at')
-                ->exists();
-
-            if (! $isVisible) {
+            if ($message->deleted_at !== null) {
                 return response()->json(['data' => ['message' => 'Attachment not found']], 404);
             }
         }

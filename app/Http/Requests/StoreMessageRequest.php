@@ -3,26 +3,28 @@
 namespace App\Http\Requests;
 
 use App\Models\Conversation;
+use Illuminate\Auth\Access\Response;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 
 class StoreMessageRequest extends FormRequest
 {
     /**
-     * Determine if the user is authorized to make this request.
+     * Only a current member writes (ConversationPolicy::participate). The
+     * conversation is in the body, not the route, so it's looked up here:
+     * deleted groups included, for the 404. An id that's nobody's
+     * conversation is refused like one that isn't theirs.
      */
-    public function authorize(): bool
+    public function authorize(): Response|bool
     {
-        $conversation = Conversation::find($this->input('conversation_id'));
+        $conversation = Conversation::withTrashed()->find($this->input('conversation_id'));
 
-        if (! $conversation || $conversation->deleted_at) {
+        if ($conversation === null) {
             return false;
         }
 
-        return $conversation->participants()
-            ->where('user_id', $this->user()->id)
-            ->whereNull('left_at')
-            ->exists();
+        return Gate::forUser($this->user())->inspect('participate', $conversation);
     }
 
     /**

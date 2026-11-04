@@ -49,11 +49,12 @@ test('a deleted group cannot be viewed or messaged afterward', function () {
 
     $this->actingAs($admin)->deleteJson("/api/conversations/{$conversation->id}")->assertNoContent();
 
+    // Gone for everyone, whatever is asked of it.
     $this->actingAs($admin)->getJson("/api/conversations/{$conversation->id}")->assertNotFound();
     $this->actingAs($admin)->postJson('/api/messages', [
         'conversation_id' => $conversation->id,
         'body' => 'hello?',
-    ])->assertForbidden();
+    ])->assertNotFound();
 });
 
 test('deleting a direct conversation is not supported', function () {

@@ -7,9 +7,12 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateConversationRequest extends FormRequest
 {
+    /**
+     * Authorized on the route (ConversationPolicy::rename).
+     */
     public function authorize(): bool
     {
-        return $this->user()->can('rename', $this->route('conversation'));
+        return true;
     }
 
     /**

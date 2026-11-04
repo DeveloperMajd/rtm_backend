@@ -40,7 +40,7 @@ class ConversationController extends Controller
 
         // The viewer's own participant row, joined rather than asked about
         // per conversation: it's what the order below is decided by.
-        $conversations = Conversation::visible()
+        $conversations = Conversation::query()
             ->join('conversation_participants as viewer', function (JoinClause $join) use ($userId): void {
                 $join->on('viewer.conversation_id', '=', 'conversations.id')
                     ->where('viewer.user_id', '=', $userId);
@@ -79,18 +79,12 @@ class ConversationController extends Controller
         return ConversationResource::collection($conversations);
     }
 
-    public function show(Request $request, Conversation $conversation): ConversationResource|JsonResponse
+    /**
+     * Authorized on the route (ConversationPolicy::view): someone who left
+     * gets the group as it was when they did (ConversationResource).
+     */
+    public function show(Conversation $conversation): ConversationResource
     {
-        if ($conversation->deleted_at) {
-            return response()->json(['data' => ['message' => 'Conversation not found']], 404);
-        }
-
-        $isParticipant = $conversation->participants()->where('user_id', $request->user()->id)->exists();
-
-        if (! $isParticipant) {
-            return response()->json(['data' => ['message' => 'Forbidden']], 403);
-        }
-
         $conversation->load('participants.user');
 
         return new ConversationResource($conversation);
@@ -98,17 +92,10 @@ class ConversationController extends Controller
 
     /**
      * Admin-only: deletes a group for every member. Not supported for
-     * direct conversations (see ConversationPolicy::delete()).
+     * direct conversations (authorized on the route, ConversationPolicy::delete()).
      */
-    public function destroy(
-        Request $request,
-        Conversation $conversation,
-        ConversationService $conversations,
-    ): Response|JsonResponse {
-        if (! $request->user()->can('delete', $conversation)) {
-            return response()->json(['data' => ['message' => 'Forbidden']], 403);
-        }
-
+    public function destroy(Conversation $conversation, ConversationService $conversations): Response
+    {
         $conversations->deleteGroup($conversation);
         broadcast(new ConversationDeleted($conversation));
 
@@ -181,17 +168,13 @@ class ConversationController extends Controller
         return new ConversationResource($conversation);
     }
 
+    /**
+     * Current members only (authorized on the route): someone who left
+     * can't write to the group, so they can't be shown writing to it either.
+     * Who's told is worked out when it goes out (TypingIndicator).
+     */
     public function typing(Request $request, Conversation $conversation): Response
     {
-        // Current members only: someone who left can't write to the group,
-        // so they can't be shown writing to it either. Who's told is worked
-        // out when it goes out (TypingIndicator).
-        $isMember = $conversation->participants()->active()->where('user_id', $request->user()->id)->exists();
-
-        if (! $isMember) {
-            return response()->noContent(403);
-        }
-
         // Someone who has turned typing indicators off isn't shown typing:
         // accepted, so their client needn't care, and nothing is sent.
         if (UserSettings::for($request->user())->typing_indicators) {
@@ -211,21 +194,14 @@ class ConversationController extends Controller
      * broadcasts nothing. That's one conditional UPDATE, so two requests
      * racing each other can't undo one another either.
      *
-     * A member who left is refused: their history is frozen at the moment
-     * they left, and moving the pointer on would mark as read — and tell the
-     * group they'd read — messages they can't see.
+     * A member who left is refused (authorized on the route,
+     * ConversationPolicy::participate): their history is frozen at the
+     * moment they left, and moving the pointer on would mark as read — and
+     * tell the group they'd read — messages they can't see.
      */
-    public function markAsRead(MarkConversationReadRequest $request, Conversation $conversation): Response|JsonResponse
+    public function markAsRead(MarkConversationReadRequest $request, Conversation $conversation): Response
     {
-        if ($conversation->deleted_at) {
-            return response()->json(['data' => ['message' => 'Conversation not found']], 404);
-        }
-
-        $participant = $conversation->participants()->where('user_id', $request->user()->id)->first();
-
-        if (! $participant || $participant->left_at !== null) {
-            return response()->noContent(403);
-        }
+        $participant = $conversation->participants()->active()->where('user_id', $request->user()->id)->sole();
 
         $messageId = $request->validated('message_id');
 
@@ -263,7 +239,8 @@ class ConversationController extends Controller
     /**
      * Pins, mutes or archives the conversation for the viewer, or undoes
      * it — their own view of it, which nobody else sees. Allowed for a group
-     * they've left, too: archiving one is a way to tidy it away.
+     * they've left, too: archiving one is a way to tidy it away (authorized
+     * on the route, ConversationPolicy::view).
      *
      * Archiving takes a conversation off the main list, so it unpins it;
      * pinning one puts it back on the list, so it unarchives it. Switching on
@@ -271,15 +248,7 @@ class ConversationController extends Controller
      */
     public function updatePreferences(UpdateConversationPreferencesRequest $request, Conversation $conversation): JsonResponse
     {
-        if ($conversation->deleted_at) {
-            return response()->json(['data' => ['message' => 'Conversation not found']], 404);
-        }
-
-        $participant = $conversation->participants()->where('user_id', $request->user()->id)->first();
-
-        if (! $participant) {
-            return response()->json(['data' => ['message' => 'Forbidden']], 403);
-        }
+        $participant = $conversation->participants()->where('user_id', $request->user()->id)->sole();
 
         $changes = [];
         foreach (['pinned' => 'pinned_at', 'muted' => 'muted_at', 'archived' => 'archived_at'] as $key => $column) {
@@ -319,25 +288,13 @@ class ConversationController extends Controller
      * stretch from the start, so the pointer alone still says it all, as it
      * did before stretches.
      *
-     * For current members only. Someone who left sees the conversation as it
-     * was when they left, and how far the others have read since isn't part
-     * of that.
+     * For current members only (authorized on the route,
+     * ConversationPolicy::participate). Someone who left sees the
+     * conversation as it was when they left, and how far the others have
+     * read since isn't part of that.
      */
     public function reads(Request $request, Conversation $conversation, ReadReceiptVisibility $receipts): JsonResponse
     {
-        if ($conversation->deleted_at) {
-            return response()->json(['data' => ['message' => 'Conversation not found']], 404);
-        }
-
-        $isActiveParticipant = $conversation->participants()
-            ->where('user_id', $request->user()->id)
-            ->whereNull('left_at')
-            ->exists();
-
-        if (! $isActiveParticipant) {
-            return response()->json(['data' => ['message' => 'Forbidden']], 403);
-        }
-
         $participants = $conversation->participants()
             ->active()
             ->get(['user_id', 'last_read_message_id', 'last_read_at', 'receipt_stretches', 'viewer_stretches']);

@@ -132,9 +132,13 @@ class Message extends Model
     }
 
     // Relationships
+    /**
+     * Deleted groups included: whoever asks about a message in one is told
+     * the group is gone (404, see ConversationPolicy), which takes the group.
+     */
     public function conversation(): BelongsTo
     {
-        return $this->belongsTo(Conversation::class);
+        return $this->belongsTo(Conversation::class)->withTrashed();
     }
 
     public function sender(): BelongsTo

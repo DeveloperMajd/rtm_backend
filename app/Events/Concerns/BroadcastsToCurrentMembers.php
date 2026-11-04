@@ -28,7 +28,8 @@ trait BroadcastsToCurrentMembers
         return ConversationParticipant::query()
             ->active()
             ->where('conversation_id', $conversationId)
-            ->whereHas('conversation', fn (Builder $conversation): Builder => $conversation->visible())
+            // Not in a deleted group: the relation leaves those out.
+            ->whereHas('conversation')
             ->when($except !== null, fn (Builder $query): Builder => $query->where('user_id', '!=', $except))
             ->pluck('user_id')
             ->map(fn (string $userId): PrivateChannel => new PrivateChannel('App.Models.User.'.$userId))

@@ -8,14 +8,50 @@ use Illuminate\Auth\Access\Response;
 use Illuminate\Support\Facades\Gate;
 
 /**
- * What someone may do to a message once it's been sent. Everything here
- * takes part in the conversation, so it starts from
- * ConversationPolicy::participate(): an active member of a conversation
- * that hasn't been deleted. A member who left or was removed still reads
- * the history up to then, but changes nothing in it.
+ * What someone may do with a message once it's been sent. Reading it starts
+ * from ConversationPolicy::view(), anything else from participate(): an
+ * active member of a conversation that hasn't been deleted. A member who
+ * left or was removed still reads the history up to then, but changes
+ * nothing in it.
  */
 class MessagePolicy
 {
+    /**
+     * See it, and what's attached to it, wherever the viewer can see it in
+     * the history (Message::visibleTo): for a member who left, only up to
+     * when they did (404 past that).
+     */
+    public function view(User $user, Message $message): Response
+    {
+        $access = Gate::forUser($user)->inspect('view', $message->conversation);
+
+        if ($access->denied()) {
+            return $access;
+        }
+
+        return Message::query()->visibleTo($user)->whereKey($message->id)->exists()
+            ? Response::allow()
+            : Response::denyAsNotFound('Message not found.');
+    }
+
+    /**
+     * Put it on the viewer's Saved list: someone's message, still there, in
+     * a conversation the viewer is still in (Message::saveableBy, 404 if
+     * not).
+     */
+    public function save(User $user, Message $message): Response
+    {
+        $participation = $this->participation($user, $message);
+
+        if ($participation->denied()) {
+            return $participation;
+        }
+
+        return Message::query()->saveableBy($user)->whereKey($message->id)->exists()
+            ? Response::allow()
+            : Response::denyAsNotFound('Message not found.');
+    }
+
     /**
      * Add or take back a reaction: on someone's message, not a group event
      * line, and not one that's been deleted.

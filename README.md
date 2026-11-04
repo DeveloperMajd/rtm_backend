@@ -96,12 +96,20 @@ emailed link.
 <details>
 <summary><strong>Conversations</strong></summary>
 
+Who may use a conversation's routes, here and below, is one of three rules
+(`ConversationPolicy`, checked on each route): **view**, anyone with a
+place in it, members who left included; **participate**, its current
+members; **manage**, a group's current admins. Anyone else gets 403. A
+deleted group is 404 on every route, for everyone (`Conversation` is
+soft-deleted).
+
 | Method | Endpoint | Notes |
 |---|---|---|
 | GET | `/conversations` | pinned first, then most recent activity; each carries the viewer's own `pinned_at`, `muted_at`, `archived_at` (archived ones are included — the client keeps them aside), and a direct one the other person as `other_participant`, with their `bio` |
 | POST | `/conversations` | throttled 10/min |
-| GET | `/conversations/{id}` | |
-| PATCH | `/conversations/{id}` | rename a group; throttled 20/min |
+| GET | `/conversations/{id}` | view; for a member who left, the group as it was when they left |
+| PATCH | `/conversations/{id}` | rename a group; manage; throttled 20/min |
+| DELETE | `/conversations/{id}` | delete a group for every member; manage; throttled 10/min |
 | POST | `/conversations/{id}/typing` | current members only; broadcast as `TypingIndicator` (`conversation_id`, `user_id`, `name`) to each other current member's own channel, in one broadcast, for their chat list and their open room; accepted but not broadcast when the sender has typing indicators off; throttled 30/min |
 | POST | `/conversations/{id}/read` | moves the viewer's read pointer to `message_id` (or the newest message without one), never backwards; when it moves and the viewer shares read receipts, broadcasts `ConversationRead` (`conversation_id`, their pointer and read stretches) to each current member's own channel; 403 for a member who left; throttled 30/min |
 | PATCH | `/conversations/{id}/preferences` | the viewer's own `pinned` / `muted` / `archived` (booleans, at least one); archiving unpins, pinning unarchives; tells the viewer's other tabs (`ConversationPreferencesUpdated` on their user channel); allowed in a group they left; throttled 30/min |
@@ -150,7 +158,7 @@ when the person has chosen not to show it to the viewer.
 | GET | `/saved-messages` | what the viewer has saved, most recently saved first: `id`, `saved_at`, the `message` and its `conversation` (`id`, `type`, `title`: the group's, or the other person's name); `?before_id=` (a save's id) pages back, `limit` default 30, max 50, with `meta.has_more` and `meta.next_before_id`. Only messages in conversations still the viewer's: nothing from a group they left or were removed from, a deleted group, or a message deleted since (the rows are kept, and show again if they're added back); throttled 60/min |
 | GET | `/saved-messages/ids` | the ids of every message the viewer has saved, for the message menu; throttled 30/min |
 | POST | `/messages/{id}/save` | saves a message, the viewer's own or anyone's; saving it again changes nothing; 204. 403 in a conversation the viewer isn't in, or isn't in any more; 404 for a deleted group, a group event line or a deleted message; throttled 60/min |
-| DELETE | `/messages/{id}/save` | takes it off the viewer's list, whether or not it was on it; 204. Allowed wherever the viewer has a place in the conversation, even after leaving; 403 for anyone else; throttled 60/min |
+| DELETE | `/messages/{id}/save` | takes it off the viewer's list, whether or not it was on it; 204. Allowed wherever the message is still the viewer's to see, even after leaving; 403 for anyone else, 404 for a deleted group; throttled 60/min |
 
 </details>
 
@@ -159,7 +167,7 @@ when the person has chosen not to show it to the viewer.
 
 | Method | Endpoint | Notes |
 |---|---|---|
-| GET | `/conversations/{id}/participants` | |
+| GET | `/conversations/{id}/participants` | who's in it now; current members only |
 | POST | `/conversations/{id}/participants` | add a member; admin-only; throttled 20/min |
 | PATCH | `/conversations/{id}/participants/{user}` | promote/demote; admin-only; throttled 20/min |
 | DELETE | `/conversations/{id}/participants/{user}` | leave; blocked for a sole admin with other members present |
