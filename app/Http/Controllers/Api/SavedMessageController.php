@@ -7,7 +7,6 @@ use App\Http\Requests\SavedMessagesRequest;
 use App\Http\Resources\SavedMessageResource;
 use App\Models\Message;
 use App\Models\SavedMessage;
-use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
@@ -81,16 +80,13 @@ class SavedMessageController extends Controller
      * Save a message. Saving one that's already saved changes nothing and
      * keeps its place in the list: 204 either way.
      *
-     * 404 for a deleted group, a group event line or a deleted message, and
-     * 403 for a conversation the viewer isn't in, or isn't in any more.
+     * Authorized on the route (MessagePolicy::save): 404 for a deleted
+     * group, a group event line or a deleted message, and 403 for a
+     * conversation the viewer isn't in, or isn't in any more.
      */
-    public function store(Request $request, Message $message): Response|JsonResponse
+    public function store(Request $request, Message $message): Response
     {
         $viewer = $request->user();
-
-        if ($denied = $this->denyUnlessSaveable($viewer, $message)) {
-            return $denied;
-        }
 
         // ON CONFLICT DO NOTHING on (user_id, message_id): two saves racing
         // write one row between them, and neither fails.
@@ -106,45 +102,16 @@ class SavedMessageController extends Controller
 
     /**
      * Take a message off the viewer's saved list: 204 whether or not it was
-     * on it. Only their own row is touched, so this is allowed wherever they
-     * have a place in the conversation, even once the message is deleted or
-     * they've left. Anyone else gets 403, as from the history.
+     * on it. Authorized on the route (MessagePolicy::view): only their own
+     * row is touched, so this is allowed wherever the message is still
+     * theirs to see, even once it's deleted or they've left.
      */
-    public function destroy(Request $request, Message $message): Response|JsonResponse
+    public function destroy(Request $request, Message $message): Response
     {
         $viewer = $request->user();
-
-        if (! $message->conversation->participants()->where('user_id', $viewer->id)->exists()) {
-            return response()->json(['data' => ['message' => 'Forbidden']], 403);
-        }
 
         $viewer->savedMessages()->where('message_id', $message->id)->delete();
 
         return response()->noContent();
-    }
-
-    /**
-     * Saving's gate, in the same order and shape as the history endpoints:
-     * a deleted group is gone (404), and a conversation the viewer isn't in
-     * any more is closed to them (403). Past that, it's Message::saveableBy()
-     * that says whether this message can be saved (404 if not).
-     */
-    private function denyUnlessSaveable(User $viewer, Message $message): ?JsonResponse
-    {
-        $conversation = $message->conversation;
-
-        if ($conversation->deleted_at !== null) {
-            return response()->json(['data' => ['message' => 'Conversation not found']], 404);
-        }
-
-        if (! $conversation->participants()->active()->where('user_id', $viewer->id)->exists()) {
-            return response()->json(['data' => ['message' => 'Forbidden']], 403);
-        }
-
-        if (! Message::query()->saveableBy($viewer)->whereKey($message->id)->exists()) {
-            return response()->json(['data' => ['message' => 'Message not found']], 404);
-        }
-
-        return null;
     }
 }

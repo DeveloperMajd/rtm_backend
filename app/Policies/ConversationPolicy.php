@@ -7,110 +7,123 @@ use App\Models\ConversationParticipant;
 use App\Models\User;
 use Illuminate\Auth\Access\Response;
 
+/**
+ * Who may do what in a conversation. Three rules, each the only copy of
+ * itself, applied on the routes (`->can()`):
+ *
+ * - view: anyone with a place in it, members who left included — the
+ *   history up to when they left (Message::visibleTo), the group as it was
+ *   then (left_snapshot), their own pin, mute and archive;
+ * - participate: its current members — writing, typing, reading, reacting,
+ *   who's in it now;
+ * - manage: a group's current admins — renaming it, adding and removing
+ *   people, changing roles, deleting it.
+ *
+ * A deleted group is gone for everyone (404): a route binding it finds
+ * nothing (Conversation is soft-deleted), and a route reaching it through a
+ * message (Message::conversation()) is refused here. Anyone else who isn't
+ * allowed is refused (403).
+ */
 class ConversationPolicy
 {
-    /**
-     * Whether the user takes part in the conversation: reacts, edits or
-     * deletes their own messages (see MessagePolicy), and sees who's in it
-     * now. Only an active member of a conversation that hasn't been deleted.
-     * Someone who left or was removed keeps reading the history up to then
-     * (Message::visibleTo), and the group as it was (left_snapshot), but
-     * changes nothing in it and sees nothing new.
-     *
-     * A deleted group is gone for everyone (404), as when its history is
-     * read; anyone else not taking part is refused (403).
-     */
+    public function view(User $user, Conversation $conversation): Response
+    {
+        return $this->gone($conversation)
+            ?? ($conversation->participants()->where('user_id', $user->id)->exists()
+                ? Response::allow()
+                : Response::deny('You’re not in this conversation.'));
+    }
+
     public function participate(User $user, Conversation $conversation): Response
     {
-        if ($conversation->deleted_at !== null) {
-            return Response::denyAsNotFound('Conversation not found.');
-        }
+        return $this->gone($conversation)
+            ?? ($this->activeParticipant($conversation, $user)
+                ? Response::allow()
+                : Response::deny('You’re not a member of this conversation.'));
+    }
 
-        return $this->activeParticipant($conversation, $user)
-            ? Response::allow()
-            : Response::deny('You’re not a member of this conversation.');
+    public function manage(User $user, Conversation $conversation): Response
+    {
+        return $this->gone($conversation)
+            ?? ($conversation->type === 'group' && $this->isActiveAdmin($user, $conversation)
+                ? Response::allow()
+                : Response::deny('Only the group’s admins can do that.'));
+    }
+
+    public function addParticipant(User $user, Conversation $conversation): Response
+    {
+        return $this->manage($user, $conversation);
     }
 
     /**
-     * Determine whether the user can add a participant to the conversation.
+     * Remove someone else who's still in the group, as long as it keeps an
+     * admin.
      */
-    public function addParticipant(User $user, Conversation $conversation): bool
+    public function kickParticipant(User $user, Conversation $conversation, User $target): Response
     {
-        if ($conversation->type !== 'group') {
-            return false;
+        $manage = $this->manage($user, $conversation);
+
+        if ($manage->denied()) {
+            return $manage;
         }
 
-        return $this->isActiveAdmin($user, $conversation);
-    }
-
-    /**
-     * Determine whether the user can kick the target participant from the
-     * conversation. Blocked if it would leave the group with zero admins.
-     */
-    public function kickParticipant(User $user, Conversation $conversation, User $target): bool
-    {
         if ($user->id === $target->id) {
-            return false;
-        }
-
-        if (! $this->addParticipant($user, $conversation)) {
-            return false;
+            return Response::deny('Leave the group instead.');
         }
 
         $targetParticipant = $this->activeParticipant($conversation, $target);
 
         if (! $targetParticipant) {
-            return false;
+            return Response::deny('They’re not in the group.');
         }
 
-        return ! ($targetParticipant->role === 'admin' && $this->activeAdminCount($conversation) <= 1);
+        return $targetParticipant->role === 'admin' && $this->activeAdminCount($conversation) <= 1
+            ? Response::deny('The group needs an admin.')
+            : Response::allow();
     }
 
     /**
-     * Determine whether the user can change the target's role. Blocked if
-     * demoting the target would leave the group with zero admins.
+     * Change the role of someone still in the group, as long as it keeps an
+     * admin.
      */
-    public function updateParticipantRole(User $user, Conversation $conversation, User $target, string $role): bool
+    public function updateParticipantRole(User $user, Conversation $conversation, User $target, string $role): Response
     {
-        if (! $this->addParticipant($user, $conversation)) {
-            return false;
+        $manage = $this->manage($user, $conversation);
+
+        if ($manage->denied()) {
+            return $manage;
         }
 
         $targetParticipant = $this->activeParticipant($conversation, $target);
 
         if (! $targetParticipant) {
-            return false;
+            return Response::deny('They’re not in the group.');
         }
 
-        if ($role === 'participant' && $targetParticipant->role === 'admin' && $this->activeAdminCount($conversation) <= 1) {
-            return false;
-        }
-
-        return true;
+        return $role === 'participant' && $targetParticipant->role === 'admin' && $this->activeAdminCount($conversation) <= 1
+            ? Response::deny('The group needs an admin.')
+            : Response::allow();
     }
 
-    /**
-     * Determine whether the user can rename the group.
-     */
-    public function rename(User $user, Conversation $conversation): bool
+    public function rename(User $user, Conversation $conversation): Response
     {
-        return $this->addParticipant($user, $conversation);
+        return $this->manage($user, $conversation);
     }
 
     /**
-     * Determine whether the user can delete the conversation. Groups only,
-     * admin-only — deleting a direct conversation isn't supported (a
+     * Groups only — deleting a direct conversation isn't supported (a
      * per-viewer "hide" was tried and reverted; it broke re-opening a
      * conversation from the contacts list, since that flow depends on the
      * conversation staying in the cached list it was just filtered out of).
      */
-    public function delete(User $user, Conversation $conversation): bool
+    public function delete(User $user, Conversation $conversation): Response
     {
-        if ($conversation->type !== 'group') {
-            return false;
-        }
+        return $this->manage($user, $conversation);
+    }
 
-        return $this->isActiveAdmin($user, $conversation);
+    private function gone(Conversation $conversation): ?Response
+    {
+        return $conversation->trashed() ? Response::denyAsNotFound('Conversation not found.') : null;
     }
 
     private function isActiveAdmin(User $user, Conversation $conversation): bool

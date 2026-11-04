@@ -2,17 +2,25 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
+/**
+ * A direct conversation or a group. Deleting a group (an admin can; a
+ * direct conversation can't be deleted, see ConversationPolicy::delete())
+ * soft-deletes it: it's gone from every query and every route that binds it
+ * (404), while its rows stay. A message's conversation is the exception
+ * (Message::conversation()), so whoever asks about a message in a deleted
+ * group can be told it's gone rather than nothing.
+ */
 class Conversation extends Model
 {
-    use HasFactory, HasUuids;
+    use HasFactory, HasUuids, SoftDeletes;
 
     public function newUniqueId(): string
     {
@@ -33,18 +41,7 @@ class Conversation extends Model
         return [
             'last_message_at' => 'datetime',
             'metadata' => 'array',
-            'deleted_at' => 'datetime',
         ];
-    }
-
-    /**
-     * Groups an admin has deleted. Direct conversations can't be deleted
-     * (see ConversationPolicy::delete()), so deleted_at is always null for
-     * them.
-     */
-    public function scopeVisible(Builder $query): Builder
-    {
-        return $query->whereNull('deleted_at');
     }
 
     // Relationships

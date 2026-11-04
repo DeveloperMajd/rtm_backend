@@ -68,17 +68,22 @@ Route::prefix('auth')->middleware('web')->group(function () {
 // `verified`: an account whose email hasn't been confirmed gets a 403
 // ("Your email address is not verified.") from everything here, so nobody
 // can chat under an address they don't own.
+//
+// Who may do what in a conversation is ConversationPolicy's (view,
+// participate, manage) and MessagePolicy's, checked on each route with
+// ->can(). A deleted group binds to nothing (404).
 Route::middleware(['web', 'auth:sanctum', AuthenticateSession::class, 'verified'])->group(function () {
     Route::prefix('conversations')->controller(ConversationController::class)->group(function () {
         Route::get('/', 'index');
         Route::post('/', 'store')->middleware('throttle:10,1,conversations.store.');
-        Route::get('/{conversation}', 'show');
-        Route::patch('/{conversation}', 'update')->middleware('throttle:20,1,conversations.update.');
-        Route::delete('/{conversation}', 'destroy')->middleware('throttle:10,1,conversations.destroy.');
-        Route::post('/{conversation}/typing', 'typing')->middleware('throttle:30,1,conversations.typing.');
-        Route::post('/{conversation}/read', 'markAsRead')->middleware('throttle:30,1,conversations.markAsRead.');
-        Route::get('/{conversation}/reads', 'reads')->middleware('throttle:60,1,conversations.reads.');
-        Route::patch('/{conversation}/preferences', 'updatePreferences')->middleware('throttle:30,1,conversations.preferences.');
+        Route::get('/{conversation}', 'show')->can('view', 'conversation');
+        Route::patch('/{conversation}', 'update')->middleware('throttle:20,1,conversations.update.')->can('rename', 'conversation');
+        Route::delete('/{conversation}', 'destroy')->middleware('throttle:10,1,conversations.destroy.')->can('delete', 'conversation');
+        Route::post('/{conversation}/typing', 'typing')->middleware('throttle:30,1,conversations.typing.')->can('participate', 'conversation');
+        Route::post('/{conversation}/read', 'markAsRead')->middleware('throttle:30,1,conversations.markAsRead.')->can('participate', 'conversation');
+        Route::get('/{conversation}/reads', 'reads')->middleware('throttle:60,1,conversations.reads.')->can('participate', 'conversation');
+        // A group someone has left is still theirs to pin, mute or archive.
+        Route::patch('/{conversation}/preferences', 'updatePreferences')->middleware('throttle:30,1,conversations.preferences.')->can('view', 'conversation');
     });
 
     Route::controller(MessageController::class)->group(function () {
@@ -87,28 +92,29 @@ Route::middleware(['web', 'auth:sanctum', AuthenticateSession::class, 'verified'
         // each with its own counter (see AppServiceProvider).
         Route::get('/messages/search', 'search')->middleware('throttle:messages.search');
         // Only an active member of a group that's still there, and only on
-        // their own messages (MessagePolicy).
+        // their own messages.
         Route::patch('/messages/{message}', 'update')->middleware('throttle:30,1,messages.update.')->can('update', 'message');
         Route::delete('/messages/{message}', 'destroy')->middleware('throttle:30,1,messages.destroy.')->can('delete', 'message');
-        Route::get('/messages/{message}/info', 'info')->middleware('throttle:60,1,messages.info.');
-        Route::get('/conversations/{conversation}/messages', 'index');
-        Route::get('/conversations/{conversation}/messages/{message}/context', 'context')->middleware('throttle:60,1,messages.context.');
+        Route::get('/messages/{message}/info', 'info')->middleware('throttle:60,1,messages.info.')->can('view', 'message');
+        Route::get('/conversations/{conversation}/messages', 'index')->can('view', 'conversation');
+        Route::get('/conversations/{conversation}/messages/{message}/context', 'context')->middleware('throttle:60,1,messages.context.')->can('view', 'conversation');
     });
 
     Route::controller(SavedMessageController::class)->group(function () {
         Route::get('/saved-messages', 'index')->middleware('throttle:60,1,saved.index.');
         Route::get('/saved-messages/ids', 'ids')->middleware('throttle:30,1,saved.ids.');
-        Route::post('/messages/{message}/save', 'store')->middleware('throttle:60,1,saved.store.');
-        Route::delete('/messages/{message}/save', 'destroy')->middleware('throttle:60,1,saved.destroy.');
+        Route::post('/messages/{message}/save', 'store')->middleware('throttle:60,1,saved.store.')->can('save', 'message');
+        // Only the viewer's own row is touched: allowed wherever the message
+        // is still theirs to see, deleted or not, in a group left or not.
+        Route::delete('/messages/{message}/save', 'destroy')->middleware('throttle:60,1,saved.destroy.')->can('view', 'message');
     });
 
     Route::controller(AttachmentController::class)->group(function () {
         Route::post('/attachments', 'store')->middleware('throttle:30,1,attachments.store.');
         Route::get('/attachments/{attachment}', 'show');
-        Route::get('/conversations/{conversation}/attachments', 'index')->middleware('throttle:60,1,attachments.index.');
+        Route::get('/conversations/{conversation}/attachments', 'index')->middleware('throttle:60,1,attachments.index.')->can('view', 'conversation');
     });
 
-    // Only an active member of a group that's still there (MessagePolicy).
     Route::prefix('messages/{message}/reactions')->controller(MessageReactionController::class)->group(function () {
         Route::post('/', 'store')->middleware('throttle:60,1,reactions.store.')->can('react', 'message');
         Route::delete('/{reaction}', 'destroy')->middleware('throttle:60,1,reactions.destroy.')->can('react', 'message');
@@ -140,11 +146,11 @@ Route::middleware(['web', 'auth:sanctum', AuthenticateSession::class, 'verified'
     });
 
     Route::prefix('conversations/{conversation}/participants')->controller(ConversationParticipantController::class)->group(function () {
-        // Current members only (ConversationParticipantController::index).
         Route::get('/', 'index')->can('participate', 'conversation');
-        Route::post('/', 'store')->middleware('throttle:20,1,participants.store.');
+        Route::post('/', 'store')->middleware('throttle:20,1,participants.store.')->can('addParticipant', 'conversation');
+        // The role is in the body: UpdateConversationParticipantRoleRequest.
         Route::patch('/{user}', 'update')->middleware('throttle:20,1,participants.update.');
-        Route::delete('/{user}', 'destroy');
-        Route::delete('/{user}/kick', 'kick')->middleware('throttle:20,1,participants.kick.');
+        Route::delete('/{user}', 'destroy')->can('participate', 'conversation');
+        Route::delete('/{user}/kick', 'kick')->middleware('throttle:20,1,participants.kick.')->can('kickParticipant', ['conversation', 'user']);
     });
 });
