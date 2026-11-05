@@ -6,6 +6,30 @@ what a deploy runs and whether a client already in the field keeps working.
 
 ## Unreleased
 
+### The CSRF token is checked on every write, from every page
+
+- **Fixed:** a write without the CSRF token was accepted from any page
+  the browser called "same site" (`allowSameSite`): every
+  `*.developermajd.com` page, and the VM hosts other projects. The
+  browser sends the session cookie with their requests too, so any of
+  them could change things for whoever was signed in. Signing in,
+  signing up and password resets weren't checked at all, so another site
+  could sign a visitor in to an account of its own (login CSRF).
+- **Changed:** every write needs the token, those four included. The SPA
+  already sends it (`X-XSRF-TOKEN`, from Sanctum's `XSRF-TOKEN` cookie,
+  readable only on `.rtm.developermajd.com`). The only exemption left is
+  `POST /presence/leave`, the page-close beacon, which can't send
+  headers; forged, it makes someone look offline until their next
+  heartbeat. (`/broadcasting/auth` stays as Laravel has it, unchecked: it
+  changes nothing, and only a page CORS allows can read its answer.)
+
+**Deploy:** no migration, nothing new in `.env`.
+
+**Compatibility:** no change for the app, which already sends the token
+with everything and fetches a fresh one after a 419.
+
+## 2026-11-04
+
 ### One access rule, and a deleted group is gone everywhere
 
 - **Fixed:** a deleted group could still be renamed, have people added,
@@ -32,6 +56,13 @@ what a deploy runs and whether a client already in the field keeps working.
 
 **Compatibility:** no change for the app, which reads these answers by
 status code (403, 404) and offers none of them for a deleted group.
+
+### symfony/mime 8.1.10
+
+- **Fixed:** `composer audit` reported CVE-2026-45070 (email header
+  injection through MIME parameter names) in symfony/mime 8.1.7, which
+  failed the audit job and every deploy. Updated to 8.1.10. Not
+  reachable here: the app's emails set no parameter names of their own.
 
 ## 2026-10-28
 

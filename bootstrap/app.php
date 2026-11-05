@@ -36,15 +36,21 @@ return Application::configure(basePath: dirname(__DIR__))
             headers: Request::HEADER_X_FORWARDED_FOR | Request::HEADER_X_FORWARDED_PROTO,
         );
 
-        $middleware->preventRequestForgery(
-            except: [
-                'api/auth/register',
-                'api/auth/login',
-                'api/auth/forgot-password',
-                'api/auth/reset-password',
-            ],
-            allowSameSite: true,
-        );
+        // Every write needs the CSRF token: the SPA sends it as X-XSRF-TOKEN,
+        // from Sanctum's XSRF-TOKEN cookie (withXSRFToken, primed when the
+        // app starts and again after a 419). No same-site shortcut: every
+        // *.developermajd.com page is "same site", the VM hosts other
+        // projects, and the browser sends the session cookie with their
+        // requests too. The token is what they can't have: its cookie is
+        // only readable on .rtm.developermajd.com (SESSION_DOMAIN). Signing
+        // in, signing up and password resets are checked like everything
+        // else, so another site can't sign a visitor in to its own account.
+        //
+        // The one exception is the beacon that says someone has closed the
+        // app (navigator.sendBeacon can't send headers). Forged, it makes
+        // someone look offline until their next heartbeat, at most 30
+        // seconds later.
+        $middleware->preventRequestForgery(except: ['api/presence/leave']);
 
         // This is an API-only backend with no server-rendered login page, so
         // there is no "login" named route to redirect guests to. Without this,
