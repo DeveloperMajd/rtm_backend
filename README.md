@@ -75,6 +75,14 @@ password is no longer the one it signed in with. Everything outside
 account that signed up with a password gets a 403 until it opens the
 emailed link.
 
+Every request that changes something needs the CSRF token, signing in,
+signing up and password resets included: the SPA sends it as
+`X-XSRF-TOKEN`, from the `XSRF-TOKEN` cookie that `GET
+/sanctum/csrf-cookie` sets, and a missing or stale one is 419. There's no
+same-site shortcut, so other `*.developermajd.com` pages are refused like
+any other site. The one exception is `POST /presence/leave`, the beacon
+sent when the app is closed (`navigator.sendBeacon` can't add headers).
+
 <details>
 <summary><strong>Auth</strong></summary>
 
