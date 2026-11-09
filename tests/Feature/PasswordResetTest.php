@@ -1,8 +1,10 @@
 <?php
 
 use App\Models\User;
+use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
@@ -88,4 +90,21 @@ test('the new password from a reset must meet the strength rules', function () {
         'password' => 'weak',
         'password_confirmation' => 'weak',
     ])->assertJsonValidationErrors('password');
+});
+
+// No "remember me" cookie from before the reset signs anyone back in.
+test('a reset changes the remember token and says so', function () {
+    Event::fake([PasswordReset::class]);
+    $user = User::factory()->create(['email' => 'ada@example.com', 'password' => 'OldStr0ng!']);
+    $before = $user->remember_token;
+
+    $this->postJson('/api/auth/reset-password', [
+        'token' => Password::createToken($user),
+        'email' => 'ada@example.com',
+        'password' => 'NewStr0ng!',
+        'password_confirmation' => 'NewStr0ng!',
+    ])->assertOk();
+
+    expect($user->fresh()->remember_token)->not->toBe($before)->toHaveLength(60);
+    Event::assertDispatched(PasswordReset::class, fn (PasswordReset $event) => $event->user->is($user));
 });

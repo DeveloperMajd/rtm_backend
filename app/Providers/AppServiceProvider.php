@@ -46,14 +46,22 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Conversation::class, ConversationPolicy::class);
         Gate::policy(Message::class, MessagePolicy::class);
 
-        // A sign-in starts without a password fingerprint from before it.
-        // AuthenticateSession (routes/api.php) ends a session whose stored
-        // fingerprint no longer matches the account's password, and signing
-        // in keeps the session's data: one left from another account, or
-        // from before a Google sign-in claimed this one, would end the new
-        // sign-in on its next request.
+        // A sign-in starts with the fingerprint of the password it signed in
+        // with, and none from before. AuthenticateSession (routes/api.php)
+        // ends a session whose stored fingerprint no longer matches the
+        // account's password: that's how changing or resetting it signs
+        // everyone else out.
+        //
+        // Laravel stores the new fingerprint as it signs someone in, so it's
+        // there from the start: a session that signs in and waits can't miss
+        // the check by making its first request only after the password has
+        // changed. An account without a password (made through Google) gets
+        // none, though, and signing in keeps the session's data: a
+        // fingerprint left from another account, or from before a Google
+        // sign-in claimed this one, would end the new sign-in on its next
+        // request. That one goes.
         Event::listen(Login::class, function (Login $event): void {
-            if (request()->hasSession()) {
+            if (request()->hasSession() && $event->user->getAuthPassword() === '') {
                 request()->session()->forget('password_hash_'.$event->guard);
             }
         });

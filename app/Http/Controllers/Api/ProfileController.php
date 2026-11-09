@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class ProfileController extends Controller
 {
@@ -28,11 +29,19 @@ class ProfileController extends Controller
         return new ProfileResource($user);
     }
 
+    /**
+     * Change the password. This session carries on (AuthenticateSession
+     * stores the new password's fingerprint as the request ends); every
+     * other session signed in with the old one ends on its next request, and
+     * the remember token changes, so no "remember me" cookie from before
+     * signs anyone back in either.
+     */
     public function updatePassword(ChangePasswordRequest $request): Response
     {
-        $request->user()->forceFill([
-            'password' => $request->string('password')->toString(),
-        ])->save();
+        $user = $request->user();
+        $user->forceFill(['password' => $request->string('password')->toString()]);
+        $user->setRememberToken(Str::random(60));
+        $user->save();
 
         return response()->noContent();
     }

@@ -6,6 +6,29 @@ what a deploy runs and whether a client already in the field keeps working.
 
 ## Unreleased
 
+### A new password signs out every other session, even one that has only just signed in
+
+- **Fixed:** changing or resetting a password signs out every other
+  session on its next request (Sanctum's `AuthenticateSession` compares the
+  password fingerprint the session holds). But a session held no
+  fingerprint until its first request after signing in: Laravel stores one
+  as it signs someone in, and a listener added for H-1 removed it again. A
+  session that signed in and waited until after the password changed
+  stored the new fingerprint on its first request and stayed signed in.
+  The listener now removes a fingerprint only for an account without a
+  password (made through Google), which Laravel stores none for, so one
+  left from another account can't sign it out.
+- **Changed:** resetting or changing a password gives the account a new
+  remember token, so no "remember me" cookie from before signs anyone back
+  in, and a reset fires Laravel's `PasswordReset` event.
+
+**Deploy:** no migration, nothing new in `.env`.
+
+**Compatibility:** no change for the app. Sessions already signed in keep
+going until the password changes, as before.
+
+## 2026-11-05
+
 ### The CSRF token is checked on every write, from every page
 
 - **Fixed:** a write without the CSRF token was accepted from any page
@@ -27,6 +50,15 @@ what a deploy runs and whether a client already in the field keeps working.
 
 **Compatibility:** no change for the app, which already sends the token
 with everything and fetches a fresh one after a 419.
+
+### Symfony 8.1.11
+
+- **Fixed:** `composer audit` reported 7 advisories from Symfony's
+  2026-11-04 security release in symfony/http-foundation (4), http-kernel,
+  routing and filesystem, which failed the audit job and every deploy.
+  Updated from 8.1.9 to 8.1.11. None was reachable here: they concern
+  Symfony's own access control, fragments, routes matched by host, its
+  `private_ranges` proxy shortcut and URLs built from the request's host.
 
 ## 2026-11-04
 

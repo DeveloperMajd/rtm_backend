@@ -47,3 +47,17 @@ test('the new password must meet the strength rules', function () {
         'password_confirmation' => 'weak',
     ])->assertJsonValidationErrors('password');
 });
+
+// No "remember me" cookie from before the change signs anyone back in.
+test('a change gives the account a new remember token', function () {
+    $user = User::factory()->create(['password' => 'OldStr0ng!']);
+    $before = $user->remember_token;
+
+    $this->actingAs($user)->patchJson('/api/profile/password', [
+        'current_password' => 'OldStr0ng!',
+        'password' => 'NewStr0ng!',
+        'password_confirmation' => 'NewStr0ng!',
+    ])->assertNoContent();
+
+    expect($user->fresh()->remember_token)->not->toBe($before)->toHaveLength(60);
+});
